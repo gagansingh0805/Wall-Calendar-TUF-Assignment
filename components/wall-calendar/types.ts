@@ -5,6 +5,28 @@ export type DateRange = {
 
 export type StoredNoteMap = Record<string, string>;
 
+export type RangeNotePriority = "low" | "medium" | "high";
+
+export type RangeNoteEntry = {
+  fromDate: string;
+  toDate: string;
+  title: string;
+  description: string;
+  tag: string;
+  priority: RangeNotePriority;
+};
+
+export type StoredRangeNoteValue = string | RangeNoteEntry;
+export type StoredRangeNoteMap = Record<string, StoredRangeNoteValue>;
+
+/** Persisted snapshot of a range note added via Save (list per month). */
+export type SavedRangeNote = RangeNoteEntry & {
+  id: string;
+  savedAt: string;
+};
+
+export type StoredSavedRangeNotesMap = Record<string, SavedRangeNote[]>;
+
 export type RangeBadgeKind = "Trip" | "Exam" | "Sprint";
 
 export type RangeBadge = {

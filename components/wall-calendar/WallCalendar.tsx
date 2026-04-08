@@ -3,8 +3,22 @@
 import { useCallback, useEffect, useMemo, useState, type CSSProperties, type MouseEvent, type SyntheticEvent } from "react";
 import { CalendarGrid } from "@/components/wall-calendar/CalendarGrid";
 import { NotesPanel } from "@/components/wall-calendar/NotesPanel";
-import type { DateRange, RangeBadge, RecurringReminderRule, StoredNoteMap, StoredRangeBadgeMap, StoredRecurringReminderMap, WeekdayCode } from "@/components/wall-calendar/types";
+import type {
+  DateRange,
+  RangeBadge,
+  RangeNoteEntry,
+  RecurringReminderRule,
+  SavedRangeNote,
+  StoredNoteMap,
+  StoredRangeBadgeMap,
+  StoredRangeNoteMap,
+  StoredRangeNoteValue,
+  StoredSavedRangeNotesMap,
+  StoredRecurringReminderMap,
+  WeekdayCode,
+} from "@/components/wall-calendar/types";
 import {
+  addDays,
   formatDateKey,
   formatMonth,
   formatRangeLabel,
@@ -14,17 +28,23 @@ import {
   getThisWeekendRange,
   isDateBetween,
   monthKey,
+  normalizeDateKeyRange,
   normalizeRange,
+  parseLocalDateKey,
   rangeKey,
   sameDay,
   startOfDay,
   toLocalDateKey,
 } from "@/lib/date";
+import { parseMemoItems } from "@/lib/memo-items";
 
 const MONTH_NOTES_STORAGE_KEY = "wall-calendar-month-notes";
 const RANGE_NOTES_STORAGE_KEY = "wall-calendar-range-notes";
+const SAVED_RANGE_NOTES_STORAGE_KEY = "wall-calendar-saved-range-notes";
 const RANGE_BADGES_STORAGE_KEY = "wall-calendar-range-badges";
 const RECURRING_REMINDERS_STORAGE_KEY = "wall-calendar-recurring-reminders";
+type ActivityScope = "ongoing" | "tomorrow" | "7d" | "30d";
+
 const FALLBACK_GIFS = [
   "https://media.giphy.com/media/3o7TKtnuHOHHUjR38Y/giphy.gif",
   "https://media.giphy.com/media/l0HlBO7eyXzSZkJri/giphy.gif",
@@ -60,6 +80,19 @@ function useStoredMap(storageKey: string) {
   }, [storageKey, state]);
 
   return [state, setState] as const;
+}
+
+function migrateRangeNote(value: StoredRangeNoteValue | undefined): RangeNoteEntry {
+  if (!value) return { fromDate: "", toDate: "", title: "", description: "", tag: "", priority: "medium" };
+  if (typeof value === "string") return { fromDate: "", toDate: "", title: "", description: value, tag: "", priority: "medium" };
+  return {
+    fromDate: value.fromDate ?? "",
+    toDate: value.toDate ?? "",
+    title: value.title ?? "",
+    description: value.description ?? "",
+    tag: value.tag ?? "",
+    priority: value.priority ?? "medium",
+  };
 }
 
 function useStoredObject<T>(storageKey: string, fallback: T) {
@@ -252,16 +285,21 @@ function suggestThemeFromHue(hue: number): ThemeName {
 export function WallCalendar() {
   const [viewDate, setViewDate] = useState<Date>(new Date());
   const [theme, setTheme] = useState<ThemeName>("midnight");
-  const [focusRangeNoteSignal, setFocusRangeNoteSignal] = useState(0);
   const [dynamicAccent, setDynamicAccent] = useState<DynamicAccent>(null);
   const [suggestedTheme, setSuggestedTheme] = useState<ThemeName | null>(null);
   const [heroParallax, setHeroParallax] = useState<HeroParallax>({ x: 0, y: 0 });
   const [range, setRange] = useState<DateRange>({ start: null, end: null });
   const [holidaysByYear, setHolidaysByYear] = useState<Record<number, HolidayRecord[]>>({});
+  const [activeAction, setActiveAction] = useState<"monthMemo" | "rangeNote" | "recurring" | "holidays">("monthMemo");
   const [monthNotes, setMonthNotes] = useStoredMap(MONTH_NOTES_STORAGE_KEY);
-  const [rangeNotes, setRangeNotes] = useStoredMap(RANGE_NOTES_STORAGE_KEY);
-  const [rangeBadges, setRangeBadges] = useStoredObject<StoredRangeBadgeMap>(RANGE_BADGES_STORAGE_KEY, {});
+  const [rangeNotes, setRangeNotes] = useStoredObject<StoredRangeNoteMap>(RANGE_NOTES_STORAGE_KEY, {});
+  const [savedRangeNotesByMonth, setSavedRangeNotesByMonth] = useStoredObject<StoredSavedRangeNotesMap>(
+    SAVED_RANGE_NOTES_STORAGE_KEY,
+    {},
+  );
+  const [, setRangeBadges] = useStoredObject<StoredRangeBadgeMap>(RANGE_BADGES_STORAGE_KEY, {});
   const [recurringReminders, setRecurringReminders] = useStoredObject<StoredRecurringReminderMap>(RECURRING_REMINDERS_STORAGE_KEY, {});
+  const [activityScope, setActivityScope] = useState<ActivityScope>("7d");
   const [reminderDraft, setReminderDraft] = useState<ReminderDraft>({
     text: "",
     freq: "monthly",
@@ -274,18 +312,37 @@ export function WallCalendar() {
   const { heroGif, isLoadingGif, isRibbonStretching, onRibbonTap, onRibbonAnimationEnd } = useHeroGifLoader();
   useTheme(theme);
 
+  useEffect(() => {
+    if (activeAction !== "monthMemo") return;
+    setRange((prev) => {
+      if (!prev.start || !prev.end) return prev;
+      if (sameDay(prev.start, prev.end)) return prev;
+      const d = startOfDay(prev.end);
+      return { start: d, end: d };
+    });
+  }, [activeAction]);
+
   const monthId = monthKey(viewDate);
   const rangeId = rangeKey(range.start, range.end);
   const monthNote = monthNotes[monthId] ?? "";
-  const selectedRangeNote = rangeNotes[`${monthId}_${rangeId}`] ?? "";
-  const currentRangeBadge = rangeBadges[rangeId] ?? null;
-
+  const selectedRangeNote = migrateRangeNote(rangeNotes[`${monthId}_${rangeId}`]);
   const monthLabel = useMemo(() => formatMonth(viewDate), [viewDate]);
   const monthName = useMemo(
     () => new Intl.DateTimeFormat("en-US", { month: "long" }).format(viewDate).toUpperCase(),
     [viewDate],
   );
   const rangeLabel = useMemo(() => formatRangeLabel(range.start, range.end), [range.start, range.end]);
+  /** YYYY-MM-DD for Month Memo due field: anchor day while choosing range, range end once complete. */
+  const calendarDueDateKey = useMemo(() => {
+    if (!range.start) return null;
+    if (range.end) return toLocalDateKey(range.end);
+    return toLocalDateKey(range.start);
+  }, [range.start, range.end]);
+  /** Stable fingerprint so range-note From/To sync when calendar selection changes without effect churn. */
+  const calendarSelectionFingerprint = useMemo(() => {
+    if (!range.start || !range.end) return null;
+    return `${toLocalDateKey(range.start)}_${toLocalDateKey(range.end)}`;
+  }, [range.start, range.end]);
   const rangeLength = useMemo(() => getRangeLengthDays(range.start, range.end), [range.start, range.end]);
   const holidaysThisMonth = useMemo(() => {
     const yearHolidays = holidaysByYear[viewDate.getFullYear()] ?? [];
@@ -312,8 +369,22 @@ export function WallCalendar() {
     });
     return tierMap;
   }, [holidaysThisMonth]);
+  const holidayLabelsByDate = useMemo(() => {
+    const labelsByKey: Record<string, string[]> = {};
+    holidaysThisMonth.forEach((holiday) => {
+      const key = formatDateKey(holiday.date);
+      if (!labelsByKey[key]) labelsByKey[key] = [];
+      labelsByKey[key].push(holiday.label);
+    });
+    const merged: Record<string, string> = {};
+    Object.entries(labelsByKey).forEach(([key, labels]) => {
+      merged[key] = [...new Set(labels)].join(" · ");
+    });
+    return merged;
+  }, [holidaysThisMonth]);
   const monthTransitionKey = useMemo(() => monthKey(viewDate), [viewDate]);
   const remindersForMonth = recurringReminders[monthId] ?? [];
+  const savedRangeNotesForMonth = savedRangeNotesByMonth[monthId] ?? [];
   const reminderInstances = useMemo(() => {
     const daysInMonth = new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 0).getDate();
     const instances: Array<{ id: string; text: string; date: Date }> = [];
@@ -327,6 +398,209 @@ export function WallCalendar() {
     }
     return instances;
   }, [remindersForMonth, viewDate]);
+  const allRecurringRules = useMemo(() => Object.values(recurringReminders).flat(), [recurringReminders]);
+  type ActivityFeedRow = {
+    id: string;
+    kind: "memo" | "range" | "recurring" | "holiday";
+    sortKey: number;
+    primary: string;
+    detail: string;
+    dateLabel: string;
+  };
+  const ongoingActivityItems = useMemo(() => {
+    const today = startOfDay(new Date());
+    const tt = today.getTime();
+    const dateFmt = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" });
+    const rows: ActivityFeedRow[] = [];
+
+    Object.entries(monthNotes).forEach(([mKey, raw]) => {
+      parseMemoItems(raw).forEach((memo) => {
+        if (memo.done || !memo.dueDate.trim()) return;
+        const due = parseLocalDateKey(memo.dueDate.trim());
+        if (!due || !sameDay(due, today)) return;
+        rows.push({
+          id: `ongoing-memo-${mKey}-${memo.id}`,
+          kind: "memo",
+          sortKey: tt,
+          primary: memo.text.trim() || "(Untitled memo)",
+          detail: "Memo",
+          dateLabel: "Due today",
+        });
+      });
+    });
+
+    Object.values(savedRangeNotesByMonth).forEach((list) => {
+      list.forEach((note) => {
+        const from = parseLocalDateKey(note.fromDate);
+        const to = parseLocalDateKey(note.toDate);
+        if (!from || !to) return;
+        const fs = startOfDay(from).getTime();
+        const fe = startOfDay(to).getTime();
+        if (tt < fs || tt > fe) return;
+        rows.push({
+          id: `ongoing-range-${note.id}`,
+          kind: "range",
+          sortKey: fe,
+          primary: note.title.trim() || "(Range note)",
+          detail: "Range",
+          dateLabel: `${dateFmt.format(from)}–${dateFmt.format(to)}`,
+        });
+      });
+    });
+
+    allRecurringRules.forEach((rule) => {
+      if (occursOnDate(rule, today)) {
+        rows.push({
+          id: `ongoing-rec-${rule.id}-${toLocalDateKey(today)}`,
+          kind: "recurring",
+          sortKey: tt,
+          primary: rule.text,
+          detail: "Recurring",
+          dateLabel: "Today",
+        });
+      }
+    });
+
+    const yToday = today.getFullYear();
+    (holidaysByYear[yToday] ?? []).forEach((h) => {
+      const parsed = new Date(h.date);
+      if (Number.isNaN(parsed.getTime())) return;
+      const d = startOfDay(parsed);
+      if (!sameDay(d, today)) return;
+      rows.push({
+        id: `ongoing-holiday-${toLocalDateKey(d)}-${h.name}`,
+        kind: "holiday",
+        sortKey: tt,
+        primary: h.name,
+        detail: "Holiday",
+        dateLabel: "Today",
+      });
+    });
+
+    rows.sort((a, b) => {
+      const c = a.sortKey - b.sortKey;
+      if (c !== 0) return c;
+      return a.primary.localeCompare(b.primary, undefined, { sensitivity: "base" });
+    });
+    return rows;
+  }, [allRecurringRules, holidaysByYear, monthNotes, savedRangeNotesByMonth]);
+
+  const upcomingActivityItems = useMemo(() => {
+    if (activityScope === "ongoing") return [];
+    const today = startOfDay(new Date());
+    let windowStart: Date;
+    let windowEnd: Date;
+    if (activityScope === "tomorrow") {
+      windowStart = addDays(today, 1);
+      windowEnd = addDays(today, 1);
+    } else if (activityScope === "7d") {
+      windowStart = addDays(today, 1);
+      windowEnd = addDays(today, 7);
+    } else {
+      windowStart = addDays(today, 1);
+      windowEnd = addDays(today, 30);
+    }
+    const ws = windowStart.getTime();
+    const we = windowEnd.getTime();
+    const dateFmt = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" });
+    const rows: ActivityFeedRow[] = [];
+
+    Object.entries(monthNotes).forEach(([mKey, raw]) => {
+      parseMemoItems(raw).forEach((memo) => {
+        if (memo.done || !memo.dueDate.trim()) return;
+        const due = parseLocalDateKey(memo.dueDate.trim());
+        if (!due) return;
+        const t = startOfDay(due).getTime();
+        if (t < ws || t > we) return;
+        rows.push({
+          id: `memo-${mKey}-${memo.id}-${memo.dueDate}`,
+          kind: "memo",
+          sortKey: t,
+          primary: memo.text.trim() || "(Untitled memo)",
+          detail: "Memo",
+          dateLabel: dateFmt.format(due),
+        });
+      });
+    });
+
+    Object.values(savedRangeNotesByMonth).forEach((list) => {
+      list.forEach((note) => {
+        const from = parseLocalDateKey(note.fromDate);
+        const to = parseLocalDateKey(note.toDate);
+        if (!from || !to) return;
+        const fs = startOfDay(from).getTime();
+        const fe = startOfDay(to).getTime();
+        if (fe < ws || fs > we) return;
+        rows.push({
+          id: `range-${note.id}`,
+          kind: "range",
+          sortKey: fs,
+          primary: note.title.trim() || "(Range note)",
+          detail: "Range",
+          dateLabel: `${dateFmt.format(from)}–${dateFmt.format(to)}`,
+        });
+      });
+    });
+
+    allRecurringRules.forEach((rule) => {
+      for (let t = ws; t <= we; t += 24 * 60 * 60 * 1000) {
+        const d = new Date(t);
+        if (occursOnDate(rule, d)) {
+          rows.push({
+            id: `rec-${rule.id}-${toLocalDateKey(d)}`,
+            kind: "recurring",
+            sortKey: t,
+            primary: rule.text,
+            detail: "Recurring",
+            dateLabel: dateFmt.format(d),
+          });
+        }
+      }
+    });
+
+    const y0 = windowStart.getFullYear();
+    const y1 = windowEnd.getFullYear();
+    for (let y = y0; y <= y1; y += 1) {
+      const list = holidaysByYear[y] ?? [];
+      list.forEach((h) => {
+        const parsed = new Date(h.date);
+        if (Number.isNaN(parsed.getTime())) return;
+        const d = startOfDay(parsed);
+        const t = d.getTime();
+        if (t < ws || t > we) return;
+        rows.push({
+          id: `holiday-${toLocalDateKey(d)}-${h.name}`,
+          kind: "holiday",
+          sortKey: t,
+          primary: h.name,
+          detail: "Holiday",
+          dateLabel: dateFmt.format(d),
+        });
+      });
+    }
+
+    rows.sort((a, b) => {
+      const c = a.sortKey - b.sortKey;
+      if (c !== 0) return c;
+      return a.primary.localeCompare(b.primary, undefined, { sensitivity: "base" });
+    });
+    return rows;
+  }, [activityScope, allRecurringRules, holidaysByYear, monthNotes, savedRangeNotesByMonth]);
+
+  const activityDisplayRows = useMemo(
+    () => (activityScope === "ongoing" ? ongoingActivityItems : upcomingActivityItems),
+    [activityScope, ongoingActivityItems, upcomingActivityItems],
+  );
+
+  const activityEmptyLabel =
+    activityScope === "ongoing"
+      ? "Nothing ongoing today."
+      : activityScope === "tomorrow"
+        ? "Nothing scheduled for tomorrow."
+        : activityScope === "7d"
+          ? "Nothing in the next 7 days."
+          : "Nothing in the next 30 days.";
+
   const liveSummary = useMemo(() => {
     const rangeText = range.start && range.end ? `${formatRangeLabel(range.start, range.end)}, ${rangeLength} days` : "No range selected";
     return `${rangeText}. ${reminderInstances.length} reminder occurrence${reminderInstances.length === 1 ? "" : "s"} this month.`;
@@ -343,6 +617,19 @@ export function WallCalendar() {
     const currentYear = new Date().getFullYear();
     return Array.from({ length: 21 }, (_, index) => currentYear - 10 + index);
   }, []);
+
+  /** Keep Range Note From/To aligned with the main calendar selection as it changes. */
+  useEffect(() => {
+    if (!calendarSelectionFingerprint) return;
+    const [fromStr, toStr] = calendarSelectionFingerprint.split("_");
+    if (!fromStr || !toStr) return;
+    const storageKey = `${monthId}_${calendarSelectionFingerprint}`;
+    setRangeNotes((prev) => {
+      const current = migrateRangeNote(prev[storageKey]);
+      if (current.fromDate === fromStr && current.toDate === toStr) return prev;
+      return { ...prev, [storageKey]: { ...current, fromDate: fromStr, toDate: toStr } };
+    });
+  }, [monthId, calendarSelectionFingerprint, setRangeNotes]);
 
   useEffect(() => {
     const centerYear = viewDate.getFullYear();
@@ -396,6 +683,12 @@ export function WallCalendar() {
   }
 
   function onSelectDate(date: Date) {
+    const clicked = startOfDay(date);
+    if (activeAction === "monthMemo") {
+      setRange({ start: clicked, end: clicked });
+      return;
+    }
+
     if (!range.start) {
       setRange({ start: date, end: null });
       return;
@@ -440,6 +733,7 @@ export function WallCalendar() {
   }
 
   function onSelectRange(startDate: Date, endDate: Date) {
+    if (activeAction === "monthMemo") return;
     const [start, end] = normalizeRange(startDate, endDate);
     setRange({ start, end });
     setRangeBadges((prev) => {
@@ -454,6 +748,7 @@ export function WallCalendar() {
   }
 
   function applyPreset(preset: "weekend" | "next7" | "month") {
+    if (activeAction === "monthMemo") return;
     const [start, end] =
       preset === "weekend" ? getThisWeekendRange(viewDate) : preset === "next7" ? getNext7DaysRange(viewDate) : getThisMonthRange(viewDate);
     if (range.start && range.end && sameDay(range.start, start) && sameDay(range.end, end)) {
@@ -461,15 +756,6 @@ export function WallCalendar() {
       return;
     }
     onSelectRange(start, end);
-  }
-
-  function onRangeBadgeChange(value: string) {
-    if (!range.start || !range.end) return;
-    setRangeBadges((prev) => {
-      const key = rangeKey(range.start, range.end);
-      const current = prev[key] ?? { kind: "Trip", label: "Trip", source: "auto" as const };
-      return { ...prev, [key]: { ...current, label: value, source: "manual" } };
-    });
   }
 
   function onReminderDraftChange(patch: Partial<ReminderDraft>) {
@@ -516,8 +802,69 @@ export function WallCalendar() {
     setMonthNotes((prev) => ({ ...prev, [monthId]: value }));
   }
 
-  function onRangeNoteChange(value: string) {
-    setRangeNotes((prev) => ({ ...prev, [`${monthId}_${rangeId}`]: value }));
+  function onRangeNoteChangePatch(patch: Partial<RangeNoteEntry>) {
+    setRangeNotes((prev) => {
+      const key = `${monthId}_${rangeId}`;
+      const current = migrateRangeNote(prev[key]);
+      const merged = { ...current, ...patch };
+      if (merged.fromDate && merged.toDate) {
+        const normalized = normalizeDateKeyRange(merged.fromDate, merged.toDate);
+        merged.fromDate = normalized.fromDate;
+        merged.toDate = normalized.toDate;
+      }
+      return { ...prev, [key]: merged };
+    });
+  }
+
+  function onSaveRangeNote(note: RangeNoteEntry) {
+    if (!note.title.trim()) return;
+    const from = note.fromDate.trim();
+    const to = note.toDate.trim();
+    if (!from || !to) return;
+    const normalized = normalizeDateKeyRange(from, to);
+    const id =
+      typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+        ? crypto.randomUUID()
+        : `saved-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+    const entry: SavedRangeNote = {
+      id,
+      savedAt: new Date().toISOString(),
+      ...note,
+      fromDate: normalized.fromDate,
+      toDate: normalized.toDate,
+    };
+    setSavedRangeNotesByMonth((prev) => ({
+      ...prev,
+      [monthId]: [entry, ...(prev[monthId] ?? [])],
+    }));
+  }
+
+  function onDeleteSavedRangeNote(id: string) {
+    setSavedRangeNotesByMonth((prev) => ({
+      ...prev,
+      [monthId]: (prev[monthId] ?? []).filter((item) => item.id !== id),
+    }));
+  }
+
+  function onUpdateSavedRangeNote(id: string, patch: Partial<RangeNoteEntry>) {
+    setSavedRangeNotesByMonth((prev) => {
+      const list = prev[monthId] ?? [];
+      const item = list.find((entry) => entry.id === id);
+      if (!item) return prev;
+      const merged: SavedRangeNote = { ...item, ...patch };
+      if (!merged.title.trim()) return prev;
+      const from = merged.fromDate?.trim() ?? "";
+      const to = merged.toDate?.trim() ?? "";
+      if (from && to) {
+        const normalized = normalizeDateKeyRange(from, to);
+        merged.fromDate = normalized.fromDate;
+        merged.toDate = normalized.toDate;
+      }
+      return {
+        ...prev,
+        [monthId]: list.map((entry) => (entry.id === id ? merged : entry)),
+      };
+    });
   }
 
   function onHeroImageLoad(event: SyntheticEvent<HTMLImageElement>) {
@@ -579,84 +926,57 @@ export function WallCalendar() {
           ? ({ "--theme-accent": dynamicAccent.accent, "--theme-accent-deep": dynamicAccent.deepAccent } as CSSProperties)
           : undefined
       }
-      className="calendar-sheet mx-auto w-full max-w-6xl overflow-hidden rounded-sm shadow-[0_30px_70px_rgba(15,23,42,0.18)]"
+      className="calendar-sheet mx-auto w-full max-w-7xl overflow-hidden rounded-sm shadow-[0_30px_70px_rgba(15,23,42,0.18)] md:h-[calc(100vh-2.5rem)] md:max-h-[980px]"
     >
       <div className="calendar-rings" aria-hidden />
-      <div
-        className="calendar-hero relative h-72 w-full sm:h-80"
-        style={
-          {
-            "--hero-parallax-x": heroParallax.x.toFixed(3),
-            "--hero-parallax-y": heroParallax.y.toFixed(3),
-          } as CSSProperties
-        }
-        onMouseMove={onHeroMouseMove}
-        onMouseLeave={onHeroMouseLeave}
-      >
-        <button
-          type="button"
-          onClick={() => void onRibbonTap()}
-          onAnimationEnd={onRibbonAnimationEnd}
-          className={`calendar-refresh-ribbon ${isRibbonStretching ? "is-stretching" : ""}`}
-          aria-label="Load a new hero gif"
+      <div className="grid gap-4 p-3 md:h-full md:grid-cols-[240px_minmax(0,1fr)_350px] md:gap-3 md:p-4 lg:grid-cols-[280px_minmax(0,1fr)_380px] lg:gap-4 lg:p-5">
+        <div
+          className="calendar-hero relative h-72 w-full overflow-hidden rounded-2xl sm:h-80 md:h-full md:min-h-0"
+          style={
+            {
+              "--hero-parallax-x": heroParallax.x.toFixed(3),
+              "--hero-parallax-y": heroParallax.y.toFixed(3),
+            } as CSSProperties
+          }
+          onMouseMove={onHeroMouseMove}
+          onMouseLeave={onHeroMouseLeave}
         >
-          {isLoadingGif ? "..." : "NEW"}
-        </button>
-        {/* Using img intentionally to preserve GIF animation in the hero area. */}
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={heroGif} alt="Animated scenic calendar hero" className="calendar-hero-media h-full w-full object-cover" onLoad={onHeroImageLoad} />
-        <div className="calendar-hero-cut-left" />
-        <div className="calendar-hero-cut-right" />
-        <div className="calendar-hero-overlay" />
-        <div className="calendar-month-badge">
-          <p className="text-5xl font-semibold leading-none tracking-tight text-white sm:text-6xl">{viewDate.getFullYear()}</p>
-          <p className="text-3xl font-extrabold leading-none text-white sm:text-5xl">{monthName}</p>
-        </div>
-      </div>
-
-      <div className="grid gap-4 p-3 lg:grid-cols-[1.1fr_1.65fr] sm:p-5">
-        <NotesPanel
-          monthLabel={monthLabel}
-          rangeLabel={rangeLabel}
-          monthNote={monthNote}
-          rangeNote={selectedRangeNote}
-          holidays={holidaysThisMonth}
-          currentYearHolidays={currentYearHolidays}
-          onMonthNoteChange={onMonthNoteChange}
-          onRangeNoteChange={onRangeNoteChange}
-          reminderDraft={reminderDraft}
-          reminders={remindersForMonth}
-          reminderInstances={reminderInstances}
-          onReminderDraftChange={onReminderDraftChange}
-          onAddRecurringReminder={onAddRecurringReminder}
-          onDeleteRecurringReminder={onDeleteRecurringReminder}
-          focusRangeNoteSignal={focusRangeNoteSignal}
-        />
-
-        <div className="calendar-panel rounded-2xl p-3 sm:p-4">
-          <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
-            <div className="space-y-1">
-              <p className="calendar-muted text-[11px] font-medium tracking-widest">WALL CALENDAR</p>
-              <p className="calendar-subtle text-[11px]">Pick theme, then choose month/year and date range.</p>
+          <button
+            type="button"
+            onClick={() => void onRibbonTap()}
+            onAnimationEnd={onRibbonAnimationEnd}
+            className={`calendar-refresh-ribbon ${isRibbonStretching ? "is-stretching" : ""}`}
+            aria-label="Load a new hero gif"
+          >
+            <span className="calendar-refresh-ribbon-label">{isLoadingGif ? "..." : "CHANGE"}</span>
+          </button>
+          {/* Using img intentionally to preserve GIF animation in the hero area. */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={heroGif} alt="Animated scenic calendar hero" className="calendar-hero-media h-full w-full object-cover" onLoad={onHeroImageLoad} />
+          <div className="calendar-hero-overlay" />
+          <div className="calendar-month-stack">
+            <p className="calendar-month-stack-year">{viewDate.getFullYear()}</p>
+            <div className="calendar-month-stack-letters" aria-label={monthName}>
+              {monthName.split("").map((letter, index) => (
+                <span key={`${letter}-${index}`}>{letter}</span>
+              ))}
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              {suggestedTheme && suggestedTheme !== theme ? (
-                <button type="button" onClick={() => setTheme(suggestedTheme)} className="calendar-chip">
-                  Mood: {suggestedTheme}
-                </button>
-              ) : null}
-              <button type="button" onClick={() => applyPreset("weekend")} className="calendar-chip" aria-label="Select this weekend range">
-                This Weekend
-              </button>
-              <button type="button" onClick={() => applyPreset("next7")} className="calendar-chip" aria-label="Select next 7 days range">
-                Next 7 Days
-              </button>
-              <button type="button" onClick={() => applyPreset("month")} className="calendar-chip" aria-label="Select this month range">
-                This Month
-              </button>
-              <div className="calendar-select-wrap">
+          </div>
+        </div>
+
+        <div className="calendar-panel flex min-h-0 flex-col rounded-2xl p-3 md:col-start-2 md:row-start-1 md:h-full md:p-4">
+          <div className="mb-3 shrink-0 space-y-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0 space-y-1">
+                <p className="calendar-muted text-[11px] font-medium tracking-widest">WALL CALENDAR</p>
+                <p className="calendar-subtle text-[11px]">Pick theme, then choose month/year and date range.</p>
+              </div>
+              <div className="calendar-select-wrap shrink-0 pt-0.5">
+                <label className="sr-only" htmlFor="wall-calendar-theme">
+                  Theme
+                </label>
                 <select
-                  aria-label="Select theme"
+                  id="wall-calendar-theme"
                   value={theme}
                   onChange={(event) => setTheme(event.target.value as ThemeName)}
                   className="calendar-select"
@@ -666,48 +986,154 @@ export function WallCalendar() {
                   <option value="midnight">Midnight</option>
                 </select>
               </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {suggestedTheme && suggestedTheme !== theme ? (
+                <button type="button" onClick={() => setTheme(suggestedTheme)} className="calendar-chip">
+                  Mood: {suggestedTheme}
+                </button>
+              ) : null}
+              {activeAction !== "monthMemo" ? (
+                <>
+                  <button type="button" onClick={() => applyPreset("weekend")} className="calendar-chip" aria-label="Select this weekend range">
+                    This Weekend
+                  </button>
+                  <button type="button" onClick={() => applyPreset("next7")} className="calendar-chip" aria-label="Select next 7 days range">
+                    Next 7 Days
+                  </button>
+                  <button type="button" onClick={() => applyPreset("month")} className="calendar-chip" aria-label="Select this month range">
+                    This Month
+                  </button>
+                </>
+              ) : null}
               <button type="button" onClick={clearSelection} className="calendar-link-btn text-xs font-medium">
                 Clear
               </button>
             </div>
           </div>
-          <CalendarGrid
-            monthDate={viewDate}
-            range={range}
-            onSelectDate={onSelectDate}
-            monthOptions={monthOptions}
-            yearOptions={yearOptions}
-            onMonthSelect={onMonthSelect}
-            onYearSelect={onYearSelect}
-            onMoveMonth={moveMonth}
-            onJumpToDate={onJumpToDate}
-            onSelectRange={onSelectRange}
-            onDoubleClickDate={onDoubleClickDate}
-            holidayTierByDate={holidayTierByDate}
-            transitionKey={monthTransitionKey}
-          />
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-            <span className="calendar-range-pill" aria-label={`Selected range length ${rangeLength} days`}>
-              {rangeLength > 0 ? `${rangeLength} day${rangeLength > 1 ? "s" : ""} selected` : "No range selected"}
-            </span>
-            {range.start && range.end ? (
-              <label className="calendar-subtle flex items-center gap-2 text-xs">
-                Range badge
-                <input
-                  value={currentRangeBadge?.label ?? ""}
-                  onChange={(event) => onRangeBadgeChange(event.target.value)}
-                  className="calendar-reminder-input !w-28"
-                  aria-label="Edit selected range badge"
-                />
-              </label>
-            ) : null}
-            <button type="button" className="calendar-link-btn text-xs font-medium" onClick={() => setFocusRangeNoteSignal((v) => v + 1)}>
-              Add note to range
-            </button>
+          <div className="shrink-0">
+            <CalendarGrid
+              monthDate={viewDate}
+              range={range}
+              selectionMode={activeAction === "monthMemo" ? "single" : "range"}
+              onSelectDate={onSelectDate}
+              monthOptions={monthOptions}
+              yearOptions={yearOptions}
+              onMonthSelect={onMonthSelect}
+              onYearSelect={onYearSelect}
+              onMoveMonth={moveMonth}
+              onJumpToDate={onJumpToDate}
+              onSelectRange={onSelectRange}
+              onDoubleClickDate={onDoubleClickDate}
+              holidayTierByDate={holidayTierByDate}
+              holidayLabelsByDate={holidayLabelsByDate}
+              transitionKey={monthTransitionKey}
+            />
+          </div>
+          {activeAction !== "holidays" ? (
+            <div className="relative z-10 mt-3 flex shrink-0 flex-wrap items-center gap-2 bg-[color:var(--theme-panel-bg)] pt-0.5">
+              <span
+                className="calendar-range-pill"
+                aria-label={
+                  activeAction === "monthMemo"
+                    ? range.start && range.end
+                      ? `Memo due date ${formatRangeLabel(range.start, range.end)}`
+                      : "No day selected for memo"
+                    : `Selected range length ${rangeLength} days`
+                }
+              >
+                {activeAction === "monthMemo"
+                  ? range.start && range.end
+                    ? sameDay(range.start, range.end)
+                      ? `Due date · ${new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" }).format(range.start)}`
+                      : formatRangeLabel(range.start, range.end)
+                    : "No day selected"
+                  : rangeLength > 0
+                    ? `${rangeLength} day${rangeLength > 1 ? "s" : ""} selected`
+                    : "No range selected"}
+              </span>
+            </div>
+          ) : null}
+          <div className="mt-3 flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-[color:var(--theme-panel-border)] bg-[color:var(--theme-notes-bg)] p-2.5 md:min-h-[10rem]">
+            <div className="mb-2 flex shrink-0 flex-wrap items-center justify-between gap-2">
+              <p className="calendar-subtle text-[11px] font-medium uppercase tracking-wide">Activity</p>
+              <div className="calendar-select-wrap calendar-activity-scope-wrap shrink-0">
+                <label className="sr-only" htmlFor="activity-scope">
+                  Activity view
+                </label>
+                <select
+                  id="activity-scope"
+                  value={activityScope}
+                  onChange={(event) => setActivityScope(event.target.value as ActivityScope)}
+                  className="calendar-select !py-1 !pl-2 !pr-6 !text-[10px]"
+                  aria-label="Activity view"
+                >
+                  <option value="ongoing">Ongoing</option>
+                  <option value="tomorrow">Tomorrow</option>
+                  <option value="7d">7 days</option>
+                  <option value="30d">30 days</option>
+                </select>
+              </div>
+            </div>
+            {activityDisplayRows.length === 0 ? (
+              <p className="calendar-muted shrink-0 text-xs">{activityEmptyLabel}</p>
+            ) : (
+              <div
+                className="calendar-activity-scroll min-h-0 w-full flex-1 basis-0 overflow-y-scroll max-h-[10rem] md:max-h-none"
+                aria-label="Activity list"
+                role="region"
+              >
+                <ul className="space-y-1.5 pr-0.5">
+                  {activityDisplayRows.map((item) => (
+                    <li
+                      key={item.id}
+                      className="calendar-reminder-row flex flex-col gap-0.5 sm:flex-row sm:items-baseline sm:justify-between sm:gap-2"
+                    >
+                      <span className="calendar-text min-w-0 flex-1 text-xs">
+                        <span className="calendar-muted text-[10px] font-medium uppercase tracking-wide">{item.detail}</span>{" "}
+                        <span className="break-words">{item.primary}</span>
+                      </span>
+                      <span className="calendar-muted shrink-0 text-[10px] tabular-nums sm:text-right">{item.dateLabel}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
           <p className="sr-only" aria-live="polite">
             {liveSummary}
           </p>
+        </div>
+        <div
+          className="md:col-start-3 md:row-start-1 md:h-full md:min-h-0 md:overflow-y-scroll md:pr-1 md:pb-1 calendar-right-scroll"
+          role="region"
+          aria-label="Notes and reminder tools"
+          tabIndex={0}
+        >
+          <NotesPanel
+            theme={theme}
+            monthLabel={monthLabel}
+            rangeLabel={rangeLabel}
+            monthNote={monthNote}
+            rangeNote={selectedRangeNote}
+            activeAction={activeAction}
+            holidays={holidaysThisMonth}
+            currentYearHolidays={currentYearHolidays}
+            onActionChange={setActiveAction}
+            onMonthNoteChange={onMonthNoteChange}
+            onRangeNoteChange={onRangeNoteChangePatch}
+            calendarDueDateKey={calendarDueDateKey}
+            savedRangeNotes={savedRangeNotesForMonth}
+            onSaveRangeNote={onSaveRangeNote}
+            onDeleteSavedRangeNote={onDeleteSavedRangeNote}
+            onUpdateSavedRangeNote={onUpdateSavedRangeNote}
+            reminderDraft={reminderDraft}
+            reminders={remindersForMonth}
+            reminderInstances={reminderInstances}
+            onReminderDraftChange={onReminderDraftChange}
+            onAddRecurringReminder={onAddRecurringReminder}
+            onDeleteRecurringReminder={onDeleteRecurringReminder}
+          />
         </div>
       </div>
     </section>

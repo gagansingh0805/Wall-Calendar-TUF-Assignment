@@ -7,6 +7,8 @@ import { addDays, addMonths, buildCalendarGrid, formatDateKey, getWeekEnd, getWe
 type CalendarGridProps = {
   monthDate: Date;
   range: DateRange;
+  /** When "single", drag does not create a range; only click/tap selects one day. */
+  selectionMode?: "range" | "single";
   onSelectDate: (date: Date) => void;
   monthOptions: Array<{ value: number; label: string }>;
   yearOptions: number[];
@@ -17,6 +19,8 @@ type CalendarGridProps = {
   onSelectRange: (start: Date, end: Date) => void;
   onDoubleClickDate: (date: Date) => void;
   holidayTierByDate: Record<string, "major" | "minor">;
+  /** Date key (YYYY-MM-DD) → holiday name(s); used for hover title and accessible name. */
+  holidayLabelsByDate: Record<string, string>;
   transitionKey: string;
 };
 
@@ -47,6 +51,7 @@ function getDayButtonClass({
 export function CalendarGrid({
   monthDate,
   range,
+  selectionMode = "range",
   onSelectDate,
   monthOptions,
   yearOptions,
@@ -57,10 +62,12 @@ export function CalendarGrid({
   onSelectRange,
   onDoubleClickDate,
   holidayTierByDate,
+  holidayLabelsByDate,
   transitionKey,
 }: CalendarGridProps) {
   const days = useMemo(() => buildCalendarGrid(monthDate), [monthDate]);
   const { start, end } = range;
+  const allowRangeDrag = selectionMode === "range";
   const [focusedDate, setFocusedDate] = useState<Date>(start ?? startOfDay(new Date()));
   const [dragAnchor, setDragAnchor] = useState<Date | null>(null);
   const [dragCurrent, setDragCurrent] = useState<Date | null>(null);
@@ -68,6 +75,7 @@ export function CalendarGrid({
   const dayRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
   useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect -- sync keyboard focus when selection or visible grid changes */
     if (start) {
       setFocusedDate((previous) => (sameDay(previous, start) ? previous : start));
       return;
@@ -75,6 +83,7 @@ export function CalendarGrid({
     const nextFocus = days.find((day) => day.isToday)?.date ?? days[0]?.date;
     if (!nextFocus) return;
     setFocusedDate((previous) => (sameDay(previous, nextFocus) ? previous : nextFocus));
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, [days, start]);
 
   useEffect(() => {
@@ -89,13 +98,14 @@ export function CalendarGrid({
   }, [dragAnchor, dragCurrent]);
 
   function handlePointerDown(date: Date) {
+    if (!allowRangeDrag) return;
     setDragAnchor(date);
     setDragCurrent(date);
     setDragMoved(false);
   }
 
   function handlePointerEnter(date: Date) {
-    if (!dragAnchor) return;
+    if (!allowRangeDrag || !dragAnchor) return;
     if (!sameDay(date, dragAnchor)) {
       setDragMoved(true);
     }
@@ -103,7 +113,7 @@ export function CalendarGrid({
   }
 
   function handlePointerUp(date: Date) {
-    if (!dragAnchor) return;
+    if (!allowRangeDrag || !dragAnchor) return;
     if (dragMoved) {
       onSelectRange(dragAnchor, date);
     }
@@ -196,9 +206,11 @@ export function CalendarGrid({
           const effectiveStart = previewRange?.start ?? start;
           const effectiveEnd = previewRange?.end ?? end;
           const isInRange = !!effectiveStart && !!effectiveEnd && isDateBetween(date, effectiveStart, effectiveEnd);
+          const dateKey = formatDateKey(date);
+          const holidayLabel = holidayLabelsByDate[dateKey];
           const context = {
             isWeekend: isWeekend(date),
-            holidayTier: holidayTierByDate[formatDateKey(date)] ?? null,
+            holidayTier: holidayTierByDate[dateKey] ?? null,
           };
 
           const buttonClasses = getDayButtonClass({
@@ -224,14 +236,19 @@ export function CalendarGrid({
               onDoubleClick={() => onDoubleClickDate(date)}
               onKeyDown={(event) => onDayKeyDown(event, date)}
               ref={(node) => {
-                dayRefs.current[formatDateKey(date)] = node;
+                dayRefs.current[dateKey] = node;
               }}
               className={buttonClasses}
               tabIndex={sameDay(date, focusedDate) ? 0 : -1}
               role="gridcell"
               aria-selected={isInRange || isStart || isEnd}
               aria-current={isToday ? "date" : undefined}
-              aria-label={`Select ${date.toDateString()}`}
+              title={holidayLabel ?? undefined}
+              aria-label={
+                holidayLabel
+                  ? `${holidayLabel}. Select ${date.toDateString()}`
+                  : `Select ${date.toDateString()}`
+              }
             >
               {date.getDate()}
               <span
