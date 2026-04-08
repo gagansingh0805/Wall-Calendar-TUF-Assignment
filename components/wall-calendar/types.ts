@@ -10,8 +10,3 @@ export type DayCell = {
   inCurrentMonth: boolean;
   isToday: boolean;
 };
-
-export type DayContext = {
-  isWeekend: boolean;
-  isHoliday: boolean;
-};

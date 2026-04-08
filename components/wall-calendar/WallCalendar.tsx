@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState, type CSSProperties, type Syn
 import { CalendarGrid } from "@/components/wall-calendar/CalendarGrid";
 import { NotesPanel } from "@/components/wall-calendar/NotesPanel";
 import type { DateRange, StoredNoteMap } from "@/components/wall-calendar/types";
-import { formatMonth, formatRangeLabel, getRangeLengthDays, monthKey, normalizeRange, rangeKey } from "@/lib/date";
+import { formatDateKey, formatMonth, formatRangeLabel, getRangeLengthDays, monthKey, normalizeRange, rangeKey } from "@/lib/date";
 
 const MONTH_NOTES_STORAGE_KEY = "wall-calendar-month-notes";
 const RANGE_NOTES_STORAGE_KEY = "wall-calendar-range-notes";
@@ -17,6 +17,7 @@ type DynamicAccent = {
   accent: string;
   deepAccent: string;
 } | null;
+type HolidayRecord = { date: string; name: string };
 
 function useStoredMap(storageKey: string) {
   const [state, setState] = useState<StoredNoteMap>(() => {
@@ -133,6 +134,7 @@ export function WallCalendar() {
   const [focusRangeNoteSignal, setFocusRangeNoteSignal] = useState(0);
   const [dynamicAccent, setDynamicAccent] = useState<DynamicAccent>(null);
   const [range, setRange] = useState<DateRange>({ start: null, end: null });
+  const [holidaysByYear, setHolidaysByYear] = useState<Record<number, HolidayRecord[]>>({});
   const [monthNotes, setMonthNotes] = useStoredMap(MONTH_NOTES_STORAGE_KEY);
   const [rangeNotes, setRangeNotes] = useStoredMap(RANGE_NOTES_STORAGE_KEY);
   const { heroGif, isLoadingGif, isRibbonStretching, onRibbonTap, onRibbonAnimationEnd } = useHeroGifLoader();
@@ -150,7 +152,25 @@ export function WallCalendar() {
   );
   const rangeLabel = useMemo(() => formatRangeLabel(range.start, range.end), [range.start, range.end]);
   const rangeLength = useMemo(() => getRangeLengthDays(range.start, range.end), [range.start, range.end]);
-  const locale = useMemo(() => Intl.DateTimeFormat().resolvedOptions().locale || "en-US", []);
+  const holidaysThisMonth = useMemo(() => {
+    const yearHolidays = holidaysByYear[viewDate.getFullYear()] ?? [];
+    const month = viewDate.getMonth();
+    return yearHolidays
+      .map((holiday) => ({ date: new Date(holiday.date), label: holiday.name }))
+      .filter((holiday) => holiday.date.getMonth() === month)
+      .sort((a, b) => a.date.getTime() - b.date.getTime());
+  }, [holidaysByYear, viewDate]);
+  const currentYearHolidays = useMemo(() => {
+    const currentYear = new Date().getFullYear();
+    const yearHolidays = holidaysByYear[currentYear] ?? [];
+    return yearHolidays
+      .map((holiday) => ({ date: new Date(holiday.date), label: holiday.name }))
+      .sort((a, b) => a.date.getTime() - b.date.getTime());
+  }, [holidaysByYear]);
+  const holidayDateSet = useMemo(
+    () => new Set(holidaysThisMonth.map((holiday) => formatDateKey(holiday.date))),
+    [holidaysThisMonth],
+  );
   const monthTransitionKey = useMemo(() => monthKey(viewDate), [viewDate]);
   const monthOptions = useMemo(
     () =>
@@ -164,6 +184,41 @@ export function WallCalendar() {
     const currentYear = new Date().getFullYear();
     return Array.from({ length: 21 }, (_, index) => currentYear - 10 + index);
   }, []);
+
+  useEffect(() => {
+    const centerYear = viewDate.getFullYear();
+    const targetYears = Array.from({ length: 21 }, (_, index) => centerYear - 10 + index).filter(
+      (year) => !holidaysByYear[year],
+    );
+    if (targetYears.length === 0) return;
+
+    let isCancelled = false;
+    async function fetchHolidayYears() {
+      const requests = targetYears.map(async (year) => {
+        try {
+          const response = await fetch(`/api/holidays?year=${year}`, { cache: "no-store" });
+          const data = (await response.json()) as { holidays?: HolidayRecord[] };
+          return { year, holidays: data.holidays ?? [] };
+        } catch {
+          return { year, holidays: [] };
+        }
+      });
+      const results = await Promise.all(requests);
+      if (isCancelled) return;
+      setHolidaysByYear((prev) => {
+        const next = { ...prev };
+        results.forEach((item) => {
+          next[item.year] = item.holidays;
+        });
+        return next;
+      });
+    }
+
+    void fetchHolidayYears();
+    return () => {
+      isCancelled = true;
+    };
+  }, [holidaysByYear, viewDate]);
 
   function moveMonth(delta: number) {
     setViewDate((current) => new Date(current.getFullYear(), current.getMonth() + delta, 1));
@@ -276,6 +331,8 @@ export function WallCalendar() {
           rangeLabel={rangeLabel}
           monthNote={monthNote}
           rangeNote={selectedRangeNote}
+          holidays={holidaysThisMonth}
+          currentYearHolidays={currentYearHolidays}
           onMonthNoteChange={onMonthNoteChange}
           onRangeNoteChange={onRangeNoteChange}
           focusRangeNoteSignal={focusRangeNoteSignal}
@@ -314,7 +371,7 @@ export function WallCalendar() {
             onMonthSelect={onMonthSelect}
             onYearSelect={onYearSelect}
             onMoveMonth={moveMonth}
-            locale={locale}
+            holidayDateSet={holidayDateSet}
             transitionKey={monthTransitionKey}
           />
           <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
