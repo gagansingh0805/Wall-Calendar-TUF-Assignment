@@ -45,9 +45,9 @@ export async function GET() {
     const selectedQuery = queryPool[Math.floor(Math.random() * queryPool.length)];
     const randomOffset = Math.floor(Math.random() * 300);
     const response = await fetch(
-      `https://api.giphy.com/v1/gifs/random?api_key=${encodeURIComponent(key)}&tag=${encodeURIComponent(
+      `https://api.giphy.com/v1/gifs/search?api_key=${encodeURIComponent(key)}&q=${encodeURIComponent(
         selectedQuery,
-      )}&rating=pg-13&random_id=${Date.now()}-${randomOffset}`,
+      )}&limit=50&offset=${randomOffset}&rating=pg-13&lang=en`,
       { cache: "no-store" },
     );
 
@@ -55,14 +55,18 @@ export async function GET() {
       throw new Error("Failed to fetch GIFs from Giphy.");
     }
 
-    const data = (await response.json()) as { data?: GiphyGifItem };
-    const giphyUrl = data.data?.images?.original?.url ?? data.data?.images?.downsized_large?.url ?? data.data?.images?.downsized?.url;
-    if (giphyUrl) {
-      return NextResponse.json({ ok: true, source: "giphy", url: giphyUrl });
+    const data = (await response.json()) as { data?: GiphyGifItem[] };
+    const urls =
+      data.data
+        ?.map((item) => item.images?.original?.url ?? item.images?.downsized_large?.url ?? item.images?.downsized?.url)
+        .filter((value): value is string => Boolean(value)) ?? [];
+
+    if (urls.length === 0) {
+      return NextResponse.json({ url: FALLBACK_GIFS[Math.floor(Math.random() * FALLBACK_GIFS.length)] });
     }
 
-    return NextResponse.json({ ok: true, source: "fallback", url: FALLBACK_GIFS[Math.floor(Math.random() * FALLBACK_GIFS.length)] });
+    return NextResponse.json({ url: urls[Math.floor(Math.random() * urls.length)] });
   } catch {
-    return NextResponse.json({ ok: false, source: "fallback", url: FALLBACK_GIFS[Math.floor(Math.random() * FALLBACK_GIFS.length)] });
+    return NextResponse.json({ url: FALLBACK_GIFS[Math.floor(Math.random() * FALLBACK_GIFS.length)] });
   }
 }

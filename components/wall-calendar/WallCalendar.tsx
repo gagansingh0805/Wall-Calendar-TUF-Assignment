@@ -43,23 +43,16 @@ function useHeroGifLoader() {
   const [heroGif, setHeroGif] = useState<string>(FALLBACK_GIFS[0]);
   const [isLoadingGif, setIsLoadingGif] = useState<boolean>(false);
   const [isRibbonStretching, setIsRibbonStretching] = useState<boolean>(false);
-  const [recentGifUrls, setRecentGifUrls] = useState<string[]>([]);
 
   const loadGifFromApi = useCallback(async (currentGif?: string) => {
     setIsLoadingGif(true);
     try {
       let nextUrl: string | undefined;
-      let usedFallback = false;
 
-      for (let i = 0; i < 6; i += 1) {
+      for (let i = 0; i < 3; i += 1) {
         const response = await fetch(`/api/gif?t=${Date.now()}-${i}`, { cache: "no-store" });
-        const data = (await response.json()) as { url?: string; source?: "giphy" | "fallback"; ok?: boolean };
-        if (!data.url) continue;
-        if (data.source === "fallback") {
-          usedFallback = true;
-          continue;
-        }
-        if (data.url !== currentGif && !recentGifUrls.includes(data.url)) {
+        const data = (await response.json()) as { url?: string };
+        if (data.url && data.url !== currentGif) {
           nextUrl = data.url;
           break;
         }
@@ -67,22 +60,18 @@ function useHeroGifLoader() {
 
       if (nextUrl) {
         setHeroGif(nextUrl);
-        setRecentGifUrls((prev) => [...prev.slice(-5), nextUrl]);
       } else {
-        // Only use hardcoded GIFs when Giphy is unavailable/empty.
-        if (usedFallback) {
-          const fallback = FALLBACK_GIFS[Math.floor(Math.random() * FALLBACK_GIFS.length)];
-          const resolved = fallback === currentGif ? FALLBACK_GIFS[(FALLBACK_GIFS.indexOf(fallback) + 1) % FALLBACK_GIFS.length] : fallback;
-          setHeroGif(resolved);
-          setRecentGifUrls((prev) => [...prev.slice(-5), resolved]);
-        }
+        const fallback = FALLBACK_GIFS[Math.floor(Math.random() * FALLBACK_GIFS.length)];
+        setHeroGif(
+          fallback === currentGif ? FALLBACK_GIFS[(FALLBACK_GIFS.indexOf(fallback) + 1) % FALLBACK_GIFS.length] : fallback,
+        );
       }
     } catch {
       setHeroGif(FALLBACK_GIFS[Math.floor(Math.random() * FALLBACK_GIFS.length)]);
     } finally {
       setIsLoadingGif(false);
     }
-  }, [recentGifUrls]);
+  }, []);
 
   useEffect(() => {
     void loadGifFromApi();
