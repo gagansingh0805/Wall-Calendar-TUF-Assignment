@@ -1,36 +1,84 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Interactive Wall Calendar Component
 
-## Getting Started
+A polished, responsive wall-calendar-inspired component built with Next.js and Tailwind CSS.
+It includes date range selection, integrated notes, and client-side persistence for quick frontend-only usage.
 
-First, run the development server:
+## Tech Stack
+
+- Next.js (App Router)
+- React
+- Tailwind CSS
+- TypeScript
+
+## Features
+
+- Wall calendar aesthetic with a hero image and clean segmented layout
+- Day range selector with clear states for:
+  - Start date
+  - End date
+  - Days inside the selected range
+- Integrated notes:
+  - Month-level memo
+  - Optional note bound to selected date range
+- `localStorage` persistence for notes
+- Responsive design:
+  - Desktop: image/calendar plus notes panel side-by-side
+  - Mobile: stacked layout with touch-friendly controls
+- Utility actions: previous/next month, jump to today, clear range
+- GIF hero background fetched from API route (`/api/gif`) using Giphy
+- Multiple themes: Ocean, Sunset, Midnight
+
+## Run Locally
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Environment variable for GIF API:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+GIPHY_API_KEY=your_giphy_key
+```
 
-## Learn More
+If not provided, the app will fall back to static GIF URLs only.
 
-To learn more about Next.js, take a look at the following resources:
+### Quality Checks
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+npm run lint
+npm run build
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Project Structure
 
-## Deploy on Vercel
+- `app/page.tsx` - page entry rendering the wall calendar
+- `components/wall-calendar/WallCalendar.tsx` - main composed feature
+- `components/wall-calendar/CalendarGrid.tsx` - calendar grid and range visuals
+- `components/wall-calendar/NotesPanel.tsx` - notes UI
+- `lib/date.ts` - date/range utilities
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Design Notes / Choices
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- The layout emulates a physical wall calendar with the image as the visual anchor.
+- Selection behavior is intuitive:
+  - first click sets start date
+  - second click sets end date
+  - reverse order clicks are normalized automatically
+- Notes are frontend-only and keyed by month and selected range to meet the no-backend requirement.
+
+## Submission Links
+
+- Repository: `<add-public-github-or-gitlab-link>`
+- Video demo (required): `<add-loom-or-youtube-link>`
+- Live demo (optional): `<add-vercel-or-netlify-link>`
+
+## Suggested Video Walkthrough Script
+
+1. Show desktop layout and visual wall-calendar styling.
+2. Select a date range and show start/end/in-between highlight behavior.
+3. Add month note and range note.
+4. Refresh page to demonstrate persistence.
+5. Resize to mobile width and demonstrate usability.
