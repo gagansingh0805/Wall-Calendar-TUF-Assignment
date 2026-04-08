@@ -7,6 +7,11 @@ type CalendarGridProps = {
   monthDate: Date;
   range: DateRange;
   onSelectDate: (date: Date) => void;
+  monthOptions: Array<{ value: number; label: string }>;
+  yearOptions: number[];
+  onMonthSelect: (month: number) => void;
+  onYearSelect: (year: number) => void;
+  onMoveMonth: (delta: number) => void;
 };
 
 const weekdayLabels = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
@@ -33,12 +38,60 @@ function getDayButtonClass({
     .trim();
 }
 
-export function CalendarGrid({ monthDate, range, onSelectDate }: CalendarGridProps) {
+export function CalendarGrid({
+  monthDate,
+  range,
+  onSelectDate,
+  monthOptions,
+  yearOptions,
+  onMonthSelect,
+  onYearSelect,
+  onMoveMonth,
+}: CalendarGridProps) {
   const days = buildCalendarGrid(monthDate);
   const { start, end } = range;
 
   return (
     <div className="calendar-grid-shell rounded-2xl px-2 py-3 sm:px-3">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <button type="button" onClick={() => onMoveMonth(-1)} className="calendar-arrow-btn" aria-label="Previous month">
+          <span aria-hidden>‹</span>
+        </button>
+        <div className="flex items-center gap-2">
+          <div className="calendar-select-wrap">
+            <select
+              aria-label="Select month"
+              value={monthDate.getMonth()}
+              onChange={(event) => onMonthSelect(Number(event.target.value))}
+              className="calendar-select"
+            >
+              {monthOptions.map((month) => (
+                <option key={month.value} value={month.value}>
+                  {month.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="calendar-select-wrap">
+            <select
+              aria-label="Select year"
+              value={monthDate.getFullYear()}
+              onChange={(event) => onYearSelect(Number(event.target.value))}
+              className="calendar-select"
+            >
+              {yearOptions.map((year) => (
+                <option key={year} value={year}>
+                  {year}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+        <button type="button" onClick={() => onMoveMonth(1)} className="calendar-arrow-btn" aria-label="Next month">
+          <span aria-hidden>›</span>
+        </button>
+      </div>
+
       <div className="calendar-weekdays mb-2 grid grid-cols-7 gap-1 text-center text-[10px] font-semibold tracking-wide sm:gap-2">
         {weekdayLabels.map((label) => (
           <div key={label}>{label}</div>

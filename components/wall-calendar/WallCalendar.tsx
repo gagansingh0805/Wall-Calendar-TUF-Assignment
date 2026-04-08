@@ -192,40 +192,10 @@ export function WallCalendar() {
         />
 
         <div className="calendar-panel rounded-2xl p-3 sm:p-4">
-          <div className="mb-4 space-y-3">
-            <div>
+          <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
+            <div className="space-y-1">
               <p className="calendar-muted text-[11px] font-medium tracking-widest">WALL CALENDAR</p>
-              <p className="calendar-subtle mt-1 text-[11px]">Select your month, theme, and date range.</p>
-              <div className="mt-2 flex flex-wrap items-center gap-2">
-                <div className="calendar-select-wrap">
-                  <select
-                    aria-label="Select month"
-                    value={viewDate.getMonth()}
-                    onChange={(event) => onMonthSelect(Number(event.target.value))}
-                    className="calendar-select"
-                  >
-                    {monthOptions.map((month) => (
-                      <option key={month.value} value={month.value}>
-                        {month.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="calendar-select-wrap">
-                  <select
-                    aria-label="Select year"
-                    value={viewDate.getFullYear()}
-                    onChange={(event) => onYearSelect(Number(event.target.value))}
-                    className="calendar-select"
-                  >
-                    {yearOptions.map((year) => (
-                      <option key={year} value={year}>
-                        {year}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
+              <p className="calendar-subtle text-[11px]">Pick theme, then choose month/year and date range.</p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <div className="calendar-select-wrap">
@@ -240,34 +210,21 @@ export function WallCalendar() {
                   <option value="midnight">Midnight</option>
                 </select>
               </div>
-            </div>
-          </div>
-
-          <div className="mb-3 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => moveMonth(-1)}
-                className="calendar-arrow-btn"
-                aria-label="Previous month"
-              >
-                <span aria-hidden>‹</span>
-              </button>
-              <p className="calendar-text text-sm font-medium">{monthLabel}</p>
-              <button
-                type="button"
-                onClick={() => moveMonth(1)}
-                className="calendar-arrow-btn"
-                aria-label="Next month"
-              >
-                <span aria-hidden>›</span>
+              <button type="button" onClick={clearSelection} className="calendar-link-btn text-xs font-medium">
+                Clear
               </button>
             </div>
-            <button type="button" onClick={clearSelection} className="calendar-link-btn text-xs font-medium">
-              Clear
-            </button>
           </div>
-          <CalendarGrid monthDate={viewDate} range={range} onSelectDate={onSelectDate} />
+          <CalendarGrid
+            monthDate={viewDate}
+            range={range}
+            onSelectDate={onSelectDate}
+            monthOptions={monthOptions}
+            yearOptions={yearOptions}
+            onMonthSelect={onMonthSelect}
+            onYearSelect={onYearSelect}
+            onMoveMonth={moveMonth}
+          />
         </div>
       </div>
     </section>

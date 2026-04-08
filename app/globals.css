@@ -511,11 +511,17 @@ body:not([data-calendar-theme="midnight"]) .shooting-star {
 }
 
 .calendar-link-btn {
+  border: none;
+  background: transparent;
+  padding: 0.15rem 0.2rem;
+  border-radius: 0.35rem;
   color: var(--theme-link);
+  transition: color 140ms ease, background-color 140ms ease;
 }
 
 .calendar-link-btn:hover {
   color: var(--theme-link-hover);
+  background: color-mix(in srgb, var(--theme-accent) 14%, transparent);
 }
 
 .calendar-arrow-btn {
