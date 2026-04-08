@@ -1,10 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type CSSProperties, type SyntheticEvent } from "react";
 import { CalendarGrid } from "@/components/wall-calendar/CalendarGrid";
 import { NotesPanel } from "@/components/wall-calendar/NotesPanel";
 import type { DateRange, StoredNoteMap } from "@/components/wall-calendar/types";
-import { formatMonth, formatRangeLabel, monthKey, normalizeRange, rangeKey } from "@/lib/date";
+import { formatMonth, formatRangeLabel, getRangeLengthDays, monthKey, normalizeRange, rangeKey } from "@/lib/date";
 
 const MONTH_NOTES_STORAGE_KEY = "wall-calendar-month-notes";
 const RANGE_NOTES_STORAGE_KEY = "wall-calendar-range-notes";
@@ -13,6 +13,10 @@ const FALLBACK_GIFS = [
   "https://media.giphy.com/media/l0HlBO7eyXzSZkJri/giphy.gif",
 ];
 type ThemeName = "ocean" | "sunset" | "midnight";
+type DynamicAccent = {
+  accent: string;
+  deepAccent: string;
+} | null;
 
 function useStoredMap(storageKey: string) {
   const [state, setState] = useState<StoredNoteMap>(() => {
@@ -39,16 +43,23 @@ function useHeroGifLoader() {
   const [heroGif, setHeroGif] = useState<string>(FALLBACK_GIFS[0]);
   const [isLoadingGif, setIsLoadingGif] = useState<boolean>(false);
   const [isRibbonStretching, setIsRibbonStretching] = useState<boolean>(false);
+  const [recentGifUrls, setRecentGifUrls] = useState<string[]>([]);
 
   const loadGifFromApi = useCallback(async (currentGif?: string) => {
     setIsLoadingGif(true);
     try {
       let nextUrl: string | undefined;
+      let usedFallback = false;
 
-      for (let i = 0; i < 3; i += 1) {
+      for (let i = 0; i < 6; i += 1) {
         const response = await fetch(`/api/gif?t=${Date.now()}-${i}`, { cache: "no-store" });
-        const data = (await response.json()) as { url?: string };
-        if (data.url && data.url !== currentGif) {
+        const data = (await response.json()) as { url?: string; source?: "giphy" | "fallback"; ok?: boolean };
+        if (!data.url) continue;
+        if (data.source === "fallback") {
+          usedFallback = true;
+          continue;
+        }
+        if (data.url !== currentGif && !recentGifUrls.includes(data.url)) {
           nextUrl = data.url;
           break;
         }
@@ -56,18 +67,22 @@ function useHeroGifLoader() {
 
       if (nextUrl) {
         setHeroGif(nextUrl);
+        setRecentGifUrls((prev) => [...prev.slice(-5), nextUrl]);
       } else {
-        const fallback = FALLBACK_GIFS[Math.floor(Math.random() * FALLBACK_GIFS.length)];
-        setHeroGif(
-          fallback === currentGif ? FALLBACK_GIFS[(FALLBACK_GIFS.indexOf(fallback) + 1) % FALLBACK_GIFS.length] : fallback,
-        );
+        // Only use hardcoded GIFs when Giphy is unavailable/empty.
+        if (usedFallback) {
+          const fallback = FALLBACK_GIFS[Math.floor(Math.random() * FALLBACK_GIFS.length)];
+          const resolved = fallback === currentGif ? FALLBACK_GIFS[(FALLBACK_GIFS.indexOf(fallback) + 1) % FALLBACK_GIFS.length] : fallback;
+          setHeroGif(resolved);
+          setRecentGifUrls((prev) => [...prev.slice(-5), resolved]);
+        }
       }
     } catch {
       setHeroGif(FALLBACK_GIFS[Math.floor(Math.random() * FALLBACK_GIFS.length)]);
     } finally {
       setIsLoadingGif(false);
     }
-  }, []);
+  }, [recentGifUrls]);
 
   useEffect(() => {
     void loadGifFromApi();
@@ -86,9 +101,48 @@ function useHeroGifLoader() {
   return { heroGif, isLoadingGif, isRibbonStretching, onRibbonTap, onRibbonAnimationEnd };
 }
 
+function hslFromRgb(r: number, g: number, b: number) {
+  const rn = r / 255;
+  const gn = g / 255;
+  const bn = b / 255;
+  const max = Math.max(rn, gn, bn);
+  const min = Math.min(rn, gn, bn);
+  const d = max - min;
+  let h = 0;
+  const l = (max + min) / 2;
+  const s = d === 0 ? 0 : d / (1 - Math.abs(2 * l - 1));
+
+  if (d !== 0) {
+    switch (max) {
+      case rn:
+        h = ((gn - bn) / d) % 6;
+        break;
+      case gn:
+        h = (bn - rn) / d + 2;
+        break;
+      default:
+        h = (rn - gn) / d + 4;
+    }
+  }
+
+  return { h: Math.round(h * 60 < 0 ? h * 60 + 360 : h * 60), s, l };
+}
+
+function bucketAccentColor(hue: number): { accent: string; deepAccent: string } {
+  if (hue >= 25 && hue <= 45) {
+    return { accent: "hsl(31 95% 56%)", deepAccent: "hsl(24 90% 46%)" };
+  }
+  if (hue >= 160 && hue <= 190) {
+    return { accent: "hsl(181 70% 45%)", deepAccent: "hsl(186 78% 33%)" };
+  }
+  return { accent: "hsl(202 89% 56%)", deepAccent: "hsl(214 86% 44%)" };
+}
+
 export function WallCalendar() {
   const [viewDate, setViewDate] = useState<Date>(new Date());
   const [theme, setTheme] = useState<ThemeName>("midnight");
+  const [focusRangeNoteSignal, setFocusRangeNoteSignal] = useState(0);
+  const [dynamicAccent, setDynamicAccent] = useState<DynamicAccent>(null);
   const [range, setRange] = useState<DateRange>({ start: null, end: null });
   const [monthNotes, setMonthNotes] = useStoredMap(MONTH_NOTES_STORAGE_KEY);
   const [rangeNotes, setRangeNotes] = useStoredMap(RANGE_NOTES_STORAGE_KEY);
@@ -106,6 +160,9 @@ export function WallCalendar() {
     [viewDate],
   );
   const rangeLabel = useMemo(() => formatRangeLabel(range.start, range.end), [range.start, range.end]);
+  const rangeLength = useMemo(() => getRangeLengthDays(range.start, range.end), [range.start, range.end]);
+  const locale = useMemo(() => Intl.DateTimeFormat().resolvedOptions().locale || "en-US", []);
+  const monthTransitionKey = useMemo(() => monthKey(viewDate), [viewDate]);
   const monthOptions = useMemo(
     () =>
       Array.from({ length: 12 }, (_, index) => ({
@@ -153,9 +210,52 @@ export function WallCalendar() {
     setRangeNotes((prev) => ({ ...prev, [`${monthId}_${rangeId}`]: value }));
   }
 
+  function onHeroImageLoad(event: SyntheticEvent<HTMLImageElement>) {
+    try {
+      const img = event.currentTarget;
+      const canvas = document.createElement("canvas");
+      const sampleSize = 28;
+      canvas.width = sampleSize;
+      canvas.height = sampleSize;
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      if (!ctx) return;
+      ctx.drawImage(img, 0, 0, sampleSize, sampleSize);
+      const { data } = ctx.getImageData(0, 0, sampleSize, sampleSize);
+
+      let sumR = 0;
+      let sumG = 0;
+      let sumB = 0;
+      let count = 0;
+      for (let i = 0; i < data.length; i += 16) {
+        const r = data[i];
+        const g = data[i + 1];
+        const b = data[i + 2];
+        const a = data[i + 3];
+        if (a < 160) continue;
+        sumR += r;
+        sumG += g;
+        sumB += b;
+        count += 1;
+      }
+      if (count === 0) return;
+      const avgR = Math.round(sumR / count);
+      const avgG = Math.round(sumG / count);
+      const avgB = Math.round(sumB / count);
+      const { h } = hslFromRgb(avgR, avgG, avgB);
+      setDynamicAccent(bucketAccentColor(h));
+    } catch {
+      setDynamicAccent(null);
+    }
+  }
+
   return (
     <section
       data-theme={theme}
+      style={
+        dynamicAccent
+          ? ({ "--theme-accent": dynamicAccent.accent, "--theme-accent-deep": dynamicAccent.deepAccent } as CSSProperties)
+          : undefined
+      }
       className="calendar-sheet mx-auto w-full max-w-4xl overflow-hidden rounded-sm shadow-[0_30px_70px_rgba(15,23,42,0.18)]"
     >
       <div className="calendar-rings" aria-hidden />
@@ -171,7 +271,7 @@ export function WallCalendar() {
         </button>
         {/* Using img intentionally to preserve GIF animation in the hero area. */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={heroGif} alt="Animated scenic calendar hero" className="h-full w-full object-cover" />
+        <img src={heroGif} alt="Animated scenic calendar hero" className="h-full w-full object-cover" onLoad={onHeroImageLoad} />
         <div className="calendar-hero-cut-left" />
         <div className="calendar-hero-cut-right" />
         <div className="calendar-hero-overlay" />
@@ -189,6 +289,7 @@ export function WallCalendar() {
           rangeNote={selectedRangeNote}
           onMonthNoteChange={onMonthNoteChange}
           onRangeNoteChange={onRangeNoteChange}
+          focusRangeNoteSignal={focusRangeNoteSignal}
         />
 
         <div className="calendar-panel rounded-2xl p-3 sm:p-4">
@@ -224,7 +325,17 @@ export function WallCalendar() {
             onMonthSelect={onMonthSelect}
             onYearSelect={onYearSelect}
             onMoveMonth={moveMonth}
+            locale={locale}
+            transitionKey={monthTransitionKey}
           />
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+            <span className="calendar-range-pill">
+              {rangeLength > 0 ? `${rangeLength} day${rangeLength > 1 ? "s" : ""} selected` : "No range selected"}
+            </span>
+            <button type="button" className="calendar-link-btn text-xs font-medium" onClick={() => setFocusRangeNoteSignal((v) => v + 1)}>
+              Add note to range
+            </button>
+          </div>
         </div>
       </div>
     </section>

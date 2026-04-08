@@ -1,7 +1,7 @@
 "use client";
 
 import type { DateRange } from "@/components/wall-calendar/types";
-import { buildCalendarGrid, isDateBetween, sameDay } from "@/lib/date";
+import { buildCalendarGrid, getDayContext, isDateBetween, sameDay } from "@/lib/date";
 
 type CalendarGridProps = {
   monthDate: Date;
@@ -12,6 +12,8 @@ type CalendarGridProps = {
   onMonthSelect: (month: number) => void;
   onYearSelect: (year: number) => void;
   onMoveMonth: (delta: number) => void;
+  locale: string;
+  transitionKey: string;
 };
 
 const weekdayLabels = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
@@ -47,6 +49,8 @@ export function CalendarGrid({
   onMonthSelect,
   onYearSelect,
   onMoveMonth,
+  locale,
+  transitionKey,
 }: CalendarGridProps) {
   const days = buildCalendarGrid(monthDate);
   const { start, end } = range;
@@ -98,11 +102,12 @@ export function CalendarGrid({
         ))}
       </div>
 
-      <div className="grid grid-cols-7 gap-1 sm:gap-2">
+      <div key={transitionKey} className="calendar-month-transition grid grid-cols-7 gap-1 sm:gap-2">
         {days.map(({ date, inCurrentMonth, isToday }) => {
           const isStart = !!start && sameDay(date, start);
           const isEnd = !!end && sameDay(date, end);
           const isInRange = !!start && !!end && isDateBetween(date, start, end);
+          const context = getDayContext(date, locale);
 
           const buttonClasses = getDayButtonClass({
             inCurrentMonth,
@@ -120,6 +125,10 @@ export function CalendarGrid({
               aria-label={`Select ${date.toDateString()}`}
             >
               {date.getDate()}
+              <span
+                className={`calendar-day-dot ${context.isHoliday ? "holiday" : context.isWeekend ? "weekend" : ""}`}
+                aria-hidden
+              />
             </button>
           );
         })}

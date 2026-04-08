@@ -225,6 +225,8 @@ body:not([data-calendar-theme="midnight"]) .shooting-star {
   --theme-page-bg: #e5e7eb;
   --theme-shadow: 0 34px 80px rgba(15, 23, 42, 0.18);
   --theme-hero-shadow: 0 16px 36px rgba(2, 6, 23, 0.24);
+  --theme-weekend-dot: color-mix(in srgb, var(--theme-accent) 55%, #94a3b8);
+  --theme-holiday-dot: color-mix(in srgb, var(--theme-accent) 85%, #fb923c);
 }
 
 .calendar-sheet[data-theme="sunset"] {
@@ -331,6 +333,16 @@ body:not([data-calendar-theme="midnight"]) .shooting-star {
   background: radial-gradient(circle at 50% 8%, color-mix(in srgb, var(--theme-accent) 26%, transparent), transparent 55%);
 }
 
+.calendar-sheet::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: radial-gradient(rgba(15, 23, 42, 0.03) 0.45px, transparent 0.45px);
+  background-size: 2px 2px;
+  opacity: 0.28;
+}
+
 .calendar-rings {
   position: absolute;
   left: 50%;
@@ -341,6 +353,16 @@ body:not([data-calendar-theme="midnight"]) .shooting-star {
   background: radial-gradient(circle, var(--theme-rings) 2px, transparent 2.4px) 0 0/14px 12px repeat-x;
   z-index: 10;
   opacity: 0.9;
+}
+
+.calendar-rings::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 12px;
+  border-top: 1px dashed color-mix(in srgb, var(--theme-panel-border) 74%, transparent);
+  opacity: 0.65;
 }
 
 .calendar-hero-cut-left {
@@ -381,6 +403,20 @@ body:not([data-calendar-theme="midnight"]) .shooting-star {
   inset: 0;
   background: linear-gradient(to top, rgba(15, 23, 42, 0.3), rgba(15, 23, 42, 0.04) 55%, rgba(15, 23, 42, 0));
   z-index: 2;
+}
+
+.calendar-panel {
+  position: relative;
+}
+
+.calendar-panel::before {
+  content: "";
+  position: absolute;
+  left: 1rem;
+  right: 1rem;
+  top: 0.55rem;
+  border-top: 1px dashed color-mix(in srgb, var(--theme-panel-border) 76%, transparent);
+  opacity: 0.8;
 }
 
 .calendar-refresh-ribbon {
@@ -484,12 +520,13 @@ body:not([data-calendar-theme="midnight"]) .shooting-star {
   padding: 0.45rem 0.65rem;
   outline: none;
   resize: vertical;
-  transition: border-color 160ms ease, box-shadow 160ms ease;
+  transition: border-color 160ms ease, box-shadow 160ms ease, background-color 160ms ease;
 }
 
 .calendar-notes-area:focus {
   border-color: var(--theme-accent);
   box-shadow: 0 0 0 3px var(--theme-focus-ring);
+  background-color: color-mix(in srgb, var(--theme-notes-bg) 90%, #ffffff);
 }
 
 .calendar-panel {
@@ -558,11 +595,14 @@ body:not([data-calendar-theme="midnight"]) .shooting-star {
 .calendar-day-btn {
   background: transparent;
   border: 1px solid transparent;
+  transform: translateY(0);
+  transition: background-color 140ms ease, border-color 140ms ease, transform 140ms ease;
 }
 
 .calendar-day-btn:hover {
   background: var(--theme-day-hover-bg);
   border-color: color-mix(in srgb, var(--theme-accent) 22%, transparent);
+  transform: translateY(-1px);
 }
 
 .calendar-day-current {
@@ -596,4 +636,52 @@ body:not([data-calendar-theme="midnight"]) .shooting-star {
   border-color: #334155;
   background: linear-gradient(180deg, #1e293b, #0f172a);
   color: #e2e8f0;
+}
+
+.calendar-day-dot {
+  position: absolute;
+  bottom: 0.22rem;
+  right: 0.22rem;
+  width: 0.28rem;
+  height: 0.28rem;
+  border-radius: 999px;
+  background: transparent;
+  opacity: 0;
+}
+
+.calendar-day-dot.weekend {
+  background: var(--theme-weekend-dot);
+  opacity: 0.55;
+}
+
+.calendar-day-dot.holiday {
+  background: var(--theme-holiday-dot);
+  opacity: 0.9;
+}
+
+.calendar-range-pill {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid color-mix(in srgb, var(--theme-accent) 35%, transparent);
+  border-radius: 999px;
+  padding: 0.25rem 0.55rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: color-mix(in srgb, var(--theme-accent-deep) 78%, var(--theme-text));
+  background: color-mix(in srgb, var(--theme-accent) 12%, transparent);
+}
+
+.calendar-month-transition {
+  animation: monthShift 180ms ease;
+}
+
+@keyframes monthShift {
+  0% {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
