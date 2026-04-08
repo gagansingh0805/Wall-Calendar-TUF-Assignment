@@ -8,6 +8,16 @@ export function startOfDay(date: Date): Date {
   return value;
 }
 
+export function addDays(date: Date, days: number): Date {
+  const value = startOfDay(date);
+  value.setDate(value.getDate() + days);
+  return value;
+}
+
+export function addMonths(date: Date, months: number): Date {
+  return new Date(date.getFullYear(), date.getMonth() + months, date.getDate());
+}
+
 export function sameDay(a: Date, b: Date): boolean {
   return startOfDay(a).getTime() === startOfDay(b).getTime();
 }
@@ -51,10 +61,15 @@ export function monthKey(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
 }
 
+export function toLocalDateKey(date: Date): string {
+  const value = startOfDay(date);
+  return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
+}
+
 export function rangeKey(start: Date | null, end: Date | null): string {
   if (!start || !end) return "no-range";
-  const s = startOfDay(start).toISOString().slice(0, 10);
-  const e = startOfDay(end).toISOString().slice(0, 10);
+  const s = toLocalDateKey(start);
+  const e = toLocalDateKey(end);
   return `${s}_${e}`;
 }
 
@@ -85,5 +100,33 @@ export function isWeekend(date: Date): boolean {
 }
 
 export function formatDateKey(date: Date): string {
-  return startOfDay(date).toISOString().slice(0, 10);
+  return toLocalDateKey(date);
+}
+
+export function getThisMonthRange(baseDate: Date): [Date, Date] {
+  const start = new Date(baseDate.getFullYear(), baseDate.getMonth(), 1);
+  const end = new Date(baseDate.getFullYear(), baseDate.getMonth() + 1, 0);
+  return [startOfDay(start), startOfDay(end)];
+}
+
+export function getNext7DaysRange(baseDate: Date): [Date, Date] {
+  const start = startOfDay(baseDate);
+  return [start, addDays(start, 6)];
+}
+
+export function getThisWeekendRange(baseDate: Date): [Date, Date] {
+  const start = startOfDay(baseDate);
+  const day = start.getDay();
+  const distanceToSaturday = (6 - day + 7) % 7;
+  const saturday = addDays(start, distanceToSaturday);
+  const sunday = addDays(saturday, 1);
+  return [saturday, sunday];
+}
+
+export function getWeekStart(date: Date): Date {
+  return addDays(date, -startOfDay(date).getDay());
+}
+
+export function getWeekEnd(date: Date): Date {
+  return addDays(getWeekStart(date), 6);
 }
