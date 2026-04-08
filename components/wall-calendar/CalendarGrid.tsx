@@ -1,7 +1,7 @@
 "use client";
 
 import type { DateRange } from "@/components/wall-calendar/types";
-import { buildCalendarGrid, getDayContext, isDateBetween, sameDay } from "@/lib/date";
+import { buildCalendarGrid, formatDateKey, isDateBetween, isWeekend, sameDay } from "@/lib/date";
 
 type CalendarGridProps = {
   monthDate: Date;
@@ -12,7 +12,7 @@ type CalendarGridProps = {
   onMonthSelect: (month: number) => void;
   onYearSelect: (year: number) => void;
   onMoveMonth: (delta: number) => void;
-  locale: string;
+  holidayDateSet: Set<string>;
   transitionKey: string;
 };
 
@@ -49,7 +49,7 @@ export function CalendarGrid({
   onMonthSelect,
   onYearSelect,
   onMoveMonth,
-  locale,
+  holidayDateSet,
   transitionKey,
 }: CalendarGridProps) {
   const days = buildCalendarGrid(monthDate);
@@ -107,7 +107,10 @@ export function CalendarGrid({
           const isStart = !!start && sameDay(date, start);
           const isEnd = !!end && sameDay(date, end);
           const isInRange = !!start && !!end && isDateBetween(date, start, end);
-          const context = getDayContext(date, locale);
+          const context = {
+            isWeekend: isWeekend(date),
+            isHoliday: holidayDateSet.has(formatDateKey(date)),
+          };
 
           const buttonClasses = getDayButtonClass({
             inCurrentMonth,

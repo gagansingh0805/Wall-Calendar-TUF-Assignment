@@ -7,6 +7,8 @@ type NotesPanelProps = {
   rangeLabel: string;
   monthNote: string;
   rangeNote: string;
+  holidays: Array<{ date: Date; label: string }>;
+  currentYearHolidays: Array<{ date: Date; label: string }>;
   onMonthNoteChange: (value: string) => void;
   onRangeNoteChange: (value: string) => void;
   focusRangeNoteSignal?: number;
@@ -41,6 +43,8 @@ export function NotesPanel({
   rangeLabel,
   monthNote,
   rangeNote,
+  holidays,
+  currentYearHolidays,
   onMonthNoteChange,
   onRangeNoteChange,
   focusRangeNoteSignal = 0,
@@ -75,6 +79,38 @@ export function NotesPanel({
         minHeightClass="min-h-20"
         textAreaRef={rangeNoteRef}
       />
+
+      <div className="rounded-xl border border-[color:var(--theme-panel-border)] bg-[color:var(--theme-notes-bg)] p-2.5">
+        <p className="calendar-subtle text-[11px] font-medium uppercase tracking-wide">Holidays this month</p>
+        {holidays.length === 0 ? (
+          <p className="calendar-muted mt-2 text-xs">No holidays this month</p>
+        ) : (
+          <ul className="mt-2 space-y-1.5">
+            {holidays.map((holiday) => (
+              <li key={`${holiday.label}-${holiday.date.toISOString()}`} className="calendar-text text-xs">
+                {new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(holiday.date)} - {holiday.label}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      <details className="rounded-xl border border-[color:var(--theme-panel-border)] bg-[color:var(--theme-notes-bg)] p-2.5">
+        <summary className="calendar-subtle cursor-pointer text-[11px] font-medium uppercase tracking-wide">
+          This year&apos;s Indian holidays
+        </summary>
+        {currentYearHolidays.length === 0 ? (
+          <p className="calendar-muted mt-2 text-xs">No holidays found for this year</p>
+        ) : (
+          <ul className="mt-2 max-h-40 space-y-1.5 overflow-auto pr-1">
+            {currentYearHolidays.map((holiday) => (
+              <li key={`${holiday.label}-${holiday.date.toISOString()}`} className="calendar-text text-xs">
+                {new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(holiday.date)} - {holiday.label}
+              </li>
+            ))}
+          </ul>
+        )}
+      </details>
     </aside>
   );
 }
