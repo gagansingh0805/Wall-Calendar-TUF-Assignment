@@ -987,28 +987,61 @@ export function WallCalendar() {
                 </select>
               </div>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="calendar-top-controls flex flex-wrap items-center gap-2">
               {suggestedTheme && suggestedTheme !== theme ? (
                 <button type="button" onClick={() => setTheme(suggestedTheme)} className="calendar-chip">
                   Mood: {suggestedTheme}
                 </button>
               ) : null}
-              {activeAction !== "monthMemo" ? (
-                <>
-                  <button type="button" onClick={() => applyPreset("weekend")} className="calendar-chip" aria-label="Select this weekend range">
-                    This Weekend
-                  </button>
-                  <button type="button" onClick={() => applyPreset("next7")} className="calendar-chip" aria-label="Select next 7 days range">
-                    Next 7 Days
-                  </button>
-                  <button type="button" onClick={() => applyPreset("month")} className="calendar-chip" aria-label="Select this month range">
-                    This Month
-                  </button>
-                </>
+              {activeAction === "rangeNote" ? (
+                <div className="calendar-select-wrap calendar-range-preset-wrap shrink-0">
+                  <label className="sr-only" htmlFor="wall-calendar-range-preset">
+                    Range preset
+                  </label>
+                  <select
+                    id="wall-calendar-range-preset"
+                    defaultValue=""
+                    className="calendar-select !py-2 !pl-3 !pr-7 !text-xs"
+                    onChange={(event) => {
+                      const preset = event.currentTarget.value as "weekend" | "next7" | "month" | "";
+                      if (!preset) return;
+                      applyPreset(preset);
+                      event.currentTarget.value = "";
+                    }}
+                    aria-label="Select a date range preset"
+                  >
+                    <option value="" disabled>
+                      No range selected
+                    </option>
+                    <option value="weekend">This Weekend</option>
+                    <option value="next7">Next 7 Days</option>
+                    <option value="month">This Month</option>
+                  </select>
+                </div>
               ) : null}
               <button type="button" onClick={clearSelection} className="calendar-link-btn text-xs font-medium">
                 Clear
               </button>
+              {activeAction !== "holidays" ? (
+                <span
+                  className="calendar-range-pill ml-auto"
+                  aria-label={
+                    activeAction === "monthMemo"
+                      ? range.start && range.end
+                        ? `Memo due date selected ${formatRangeLabel(range.start, range.end)}`
+                        : "No date selected for memo"
+                      : `Selected range length ${rangeLength} days`
+                  }
+                >
+                  {activeAction === "monthMemo"
+                    ? range.start && range.end
+                      ? `Due date selected · ${new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" }).format(range.start)}`
+                      : "No date selected"
+                    : rangeLength > 0
+                      ? `${rangeLength} day${rangeLength > 1 ? "s" : ""} selected`
+                      : "No range selected"}
+                </span>
+              ) : null}
             </div>
           </div>
           <div className="shrink-0">
@@ -1030,30 +1063,6 @@ export function WallCalendar() {
               transitionKey={monthTransitionKey}
             />
           </div>
-          {activeAction !== "holidays" ? (
-            <div className="relative z-10 mt-3 flex shrink-0 flex-wrap items-center gap-2 bg-[color:var(--theme-panel-bg)] pt-0.5">
-              <span
-                className="calendar-range-pill"
-                aria-label={
-                  activeAction === "monthMemo"
-                    ? range.start && range.end
-                      ? `Memo due date ${formatRangeLabel(range.start, range.end)}`
-                      : "No day selected for memo"
-                    : `Selected range length ${rangeLength} days`
-                }
-              >
-                {activeAction === "monthMemo"
-                  ? range.start && range.end
-                    ? sameDay(range.start, range.end)
-                      ? `Due date · ${new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" }).format(range.start)}`
-                      : formatRangeLabel(range.start, range.end)
-                    : "No day selected"
-                  : rangeLength > 0
-                    ? `${rangeLength} day${rangeLength > 1 ? "s" : ""} selected`
-                    : "No range selected"}
-              </span>
-            </div>
-          ) : null}
           <div className="mt-3 flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-[color:var(--theme-panel-border)] bg-[color:var(--theme-notes-bg)] p-2.5 md:min-h-[10rem]">
             <div className="mb-2 flex shrink-0 flex-wrap items-center justify-between gap-2">
               <p className="calendar-subtle text-[11px] font-medium uppercase tracking-wide">Activity</p>
@@ -1105,7 +1114,7 @@ export function WallCalendar() {
           </p>
         </div>
         <div
-          className="md:col-start-3 md:row-start-1 md:h-full md:min-h-0 md:overflow-y-scroll md:pr-1 md:pb-1 calendar-right-scroll"
+          className="md:col-start-3 md:row-start-1 md:h-full md:min-h-0 md:overflow-hidden md:pr-1 md:pb-1"
           role="region"
           aria-label="Notes and reminder tools"
           tabIndex={0}

@@ -1818,6 +1818,133 @@ body:not([data-calendar-theme="midnight"]) .shooting-star {
   box-shadow: 0 6px 16px rgba(15, 23, 42, 0.1);
 }
 
+.calendar-select-wrap.calendar-range-preset-wrap {
+  border-color: color-mix(in srgb, var(--theme-accent) 35%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--theme-accent) 12%, transparent);
+}
+
+.calendar-select-wrap.calendar-range-preset-wrap:hover,
+.calendar-select-wrap.calendar-range-preset-wrap:focus-within {
+  border-color: color-mix(in srgb, var(--theme-accent) 50%, transparent);
+  background: color-mix(in srgb, var(--theme-accent) 16%, transparent);
+  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.16);
+}
+
+.calendar-top-controls {
+  min-height: 2.35rem;
+}
+
+@media (min-width: 768px) {
+  .calendar-top-controls {
+    flex-wrap: nowrap;
+  }
+}
+
+.calendar-range-pill {
+  padding: 0.38rem 0.72rem;
+  font-weight: 700;
+  color: #dbeafe;
+}
+
+.calendar-sheet[data-theme="midnight"] .calendar-range-pill {
+  color: #dbeafe;
+}
+
+.calendar-memo-delete-btn {
+  line-height: 0;
+}
+
+.calendar-memo-delete-btn svg {
+  width: 1rem;
+  height: 1rem;
+  flex-shrink: 0;
+}
+
+.calendar-holidays-search {
+  padding: 0.62rem 0.8rem;
+}
+
+.calendar-holidays-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.calendar-holidays-accordion {
+  --calendar-holidays-gutter: 0.95rem;
+  padding: 0;
+  overflow: hidden;
+  margin: 0;
+}
+
+.calendar-holidays-year-summary {
+  margin: 0;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  padding: 0.62rem var(--calendar-holidays-gutter);
+}
+
+.calendar-holidays-year-summary::marker {
+  content: "";
+}
+
+.calendar-holidays-accordion.is-open .calendar-holidays-year-summary::after {
+  transform: rotate(225deg);
+  margin-top: 0.15rem;
+}
+
+.calendar-holidays-list {
+  gap: 0.38rem;
+}
+
+.calendar-holidays-list-scroll {
+  padding-right: 0;
+}
+
+.calendar-holidays-accordion .calendar-holidays-list-scroll {
+  padding: 0 var(--calendar-holidays-gutter) 0.65rem;
+  margin-top: 0;
+}
+
+.calendar-holidays-month-details .calendar-holidays-empty,
+.calendar-holidays-year-details .calendar-holidays-empty {
+  padding: 0 var(--calendar-holidays-gutter) 0.65rem;
+}
+
+.calendar-saved-range-open-btn {
+  min-width: 0;
+  flex: 1 1 min(0, 100%);
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  padding: 0;
+  cursor: pointer;
+}
+
+.calendar-saved-range-card {
+  flex-wrap: nowrap;
+  align-items: flex-start;
+  gap: 0.7rem;
+}
+
+.calendar-saved-range-card .calendar-memo-item-stack {
+  flex: 1 1 auto;
+  gap: 0.42rem;
+}
+
+.calendar-saved-range-card .calendar-memo-item-meta {
+  gap: 0.45rem 0.55rem;
+}
+
+.calendar-saved-range-card-actions {
+  align-self: flex-start;
+  margin-top: 0.1rem;
+}
+
 .calendar-sheet[data-theme="midnight"] .calendar-select-wrap.calendar-activity-scope-wrap {
   background: color-mix(in srgb, var(--theme-notes-bg) 94%, #0f172a);
   border-color: color-mix(in srgb, var(--theme-panel-border) 92%, transparent);

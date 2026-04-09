@@ -80,6 +80,15 @@ function MemoIconReopen() {
   );
 }
 
+function MemoIconClose() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M18 6 6 18" />
+      <path d="m6 6 12 12" />
+    </svg>
+  );
+}
+
 function formatDateKeyDisplay(key: string) {
   const d = parseLocalDateKey(key);
   if (!d) return key;
@@ -122,12 +131,14 @@ function MonthMemoInlineEditor({
   onSave,
   onCancel,
   ariaLabel,
+  minDueDate,
 }: {
   draft: MemoEditDraft;
   setDraft: Dispatch<SetStateAction<MemoEditDraft | null>>;
   onSave: () => void;
   onCancel: () => void;
   ariaLabel: string;
+  minDueDate: string;
 }) {
   return (
     <div
@@ -173,6 +184,7 @@ function MonthMemoInlineEditor({
               type="date"
               value={draft.dueDate}
               onChange={(event) => setDraft((d) => (d ? { ...d, dueDate: event.target.value } : d))}
+              min={minDueDate}
               className="calendar-reminder-input w-full"
               aria-label="Memo due date"
             />
@@ -244,6 +256,8 @@ export function NotesPanel({
   const [memoDraftPriority, setMemoDraftPriority] = useState<RangeNotePriority>("medium");
   const [memoDraftDueDate, setMemoDraftDueDate] = useState("");
   const [memoSort, setMemoSort] = useState<MemoSortKey>("order");
+  const [holidaySearch, setHolidaySearch] = useState("");
+  const [activeHolidaySection, setActiveHolidaySection] = useState<"month" | "year">("month");
   /** Inline edit for month memo list items (view → edit → save/cancel). */
   const [memoEdit, setMemoEdit] = useState<MemoEditDraft | null>(null);
   const [modalSavedNote, setModalSavedNote] = useState<SavedRangeNote | null>(null);
@@ -268,6 +282,15 @@ export function NotesPanel({
     () => sortMemoItems(memoItems.filter((item) => item.done), memoSort),
     [memoItems, memoSort],
   );
+  const normalizedHolidaySearch = holidaySearch.trim().toLowerCase();
+  const filteredMonthHolidays = useMemo(() => {
+    if (!normalizedHolidaySearch) return holidays;
+    return holidays.filter((holiday) => holiday.label.toLowerCase().includes(normalizedHolidaySearch));
+  }, [holidays, normalizedHolidaySearch]);
+  const filteredYearHolidays = useMemo(() => {
+    if (!normalizedHolidaySearch) return currentYearHolidays;
+    return currentYearHolidays.filter((holiday) => holiday.label.toLowerCase().includes(normalizedHolidaySearch));
+  }, [currentYearHolidays, normalizedHolidaySearch]);
 
   const closeSavedNoteModal = useCallback(() => {
     setModalSavedNote(null);
@@ -299,6 +322,7 @@ export function NotesPanel({
   );
   const canAddMemo = Boolean(memoPrompt.trim());
   const canAddRecurring = Boolean(reminderDraft.text.trim());
+  const minDueDate = toLocalDateKey(new Date());
 
   useEffect(() => {
     if (!focusRangeNoteSignal) return;
@@ -312,9 +336,10 @@ export function NotesPanel({
 
   useEffect(() => {
     if (!calendarDueDateKey?.trim()) return;
-    setMemoDraftDueDate(calendarDueDateKey);
-    setMemoEdit((prev) => (prev ? { ...prev, dueDate: calendarDueDateKey } : prev));
-  }, [calendarDueDateKey]);
+    const safeDueDate = calendarDueDateKey >= minDueDate ? calendarDueDateKey : "";
+    setMemoDraftDueDate(safeDueDate);
+    setMemoEdit((prev) => (prev ? { ...prev, dueDate: safeDueDate } : prev));
+  }, [calendarDueDateKey, minDueDate]);
 
   function beginMemoEdit(item: MemoItem) {
     setMemoEdit({
@@ -406,7 +431,7 @@ export function NotesPanel({
   function onCancelSavedNoteEdits() {
     if (!modalSavedNote) return;
     setSavedNoteEditDraft(savedNoteToEntryFields(modalSavedNote));
-    setIsEditingSavedModal(false);
+    closeSavedNoteModal();
   }
 
   const canSaveSavedEdits = Boolean(
@@ -579,7 +604,7 @@ export function NotesPanel({
   return (
     <>
       {modal}
-      <aside className="calendar-panel calendar-notes-clean flex flex-col gap-3 rounded-2xl p-3 sm:p-4">
+      <aside className="calendar-panel calendar-notes-clean calendar-right-scroll flex h-full min-h-0 flex-col gap-3 overflow-y-auto rounded-2xl p-3 sm:p-4">
       <div>
         <h3 className="calendar-muted text-[11px] font-semibold tracking-wide">Notes</h3>
         <p className="calendar-muted mt-1 text-xs">{monthLabel}</p>
@@ -645,6 +670,7 @@ export function NotesPanel({
                   type="date"
                   value={memoDraftDueDate}
                   onChange={(event) => setMemoDraftDueDate(event.target.value)}
+                  min={minDueDate}
                   className="calendar-reminder-input w-full"
                   aria-label="Due date for new memo"
                 />
@@ -700,6 +726,7 @@ export function NotesPanel({
                             onSave={saveMemoEdit}
                             onCancel={cancelMemoEdit}
                             ariaLabel={`Edit memo ${index + 1}`}
+                            minDueDate={minDueDate}
                           />
                         ) : (
                           <>
@@ -736,7 +763,7 @@ export function NotesPanel({
                                 aria-label={`Remove pending item: ${item.text}`}
                                 title="Remove"
                               >
-                                ×
+                                <MemoIconClose />
                               </button>
                             </div>
                           </>
@@ -774,6 +801,7 @@ export function NotesPanel({
                             onSave={saveMemoEdit}
                             onCancel={cancelMemoEdit}
                             ariaLabel={`Edit memo ${index + 1}`}
+                            minDueDate={minDueDate}
                           />
                         ) : (
                           <>
@@ -810,7 +838,7 @@ export function NotesPanel({
                                 aria-label={`Remove completed item: ${item.text}`}
                                 title="Remove"
                               >
-                                ×
+                                <MemoIconClose />
                               </button>
                             </div>
                           </>
@@ -911,11 +939,11 @@ export function NotesPanel({
                 <p className="calendar-muted text-xs">No saved range notes yet.</p>
               ) : (
                 <ul className="space-y-1.5">
-                  {savedRangeNotes.map((item) => (
-                    <li key={item.id}>
+                  {savedRangeNotes.map((item, index) => (
+                    <li key={item.id} className="calendar-memo-item-row calendar-saved-range-card">
                       <button
                         type="button"
-                        className="calendar-saved-range-row"
+                        className="calendar-saved-range-open-btn"
                         onClick={() => {
                           setModalSavedNote(item);
                           setSavedNoteEditDraft(savedNoteToEntryFields(item));
@@ -923,12 +951,50 @@ export function NotesPanel({
                         }}
                         aria-label={`View saved note ${item.title.trim() || "Untitled"}`}
                       >
-                        <span className="calendar-saved-range-row-title">{item.title.trim() || "Untitled"}</span>
-                        <span className="calendar-saved-range-row-meta">
-                          {formatDateKeyDisplay(item.fromDate)} – {formatDateKeyDisplay(item.toDate)}
-                        </span>
-                        <span className={`calendar-priority-pill priority-${item.priority}`}>{item.priority}</span>
+                        <div className="calendar-memo-item-stack">
+                          <p className="calendar-memo-item-title">
+                            <span className="calendar-memo-item-index">{index + 1}.</span>
+                            <span>{item.title.trim() || "Untitled"}</span>
+                          </p>
+                          <div className="calendar-memo-item-meta">
+                            <span className={`calendar-priority-pill priority-${item.priority}`}>{item.priority}</span>
+                            <div className="flex min-w-0 flex-col gap-0.5 text-[10px] leading-snug">
+                              <div className="flex flex-wrap items-baseline gap-x-1">
+                                <span className="calendar-muted">From</span>
+                                <span className="calendar-memo-due font-semibold">{formatDateKeyDisplay(item.fromDate)}</span>
+                              </div>
+                              <div className="flex flex-wrap items-baseline gap-x-1">
+                                <span className="calendar-muted">To</span>
+                                <span className="calendar-memo-due font-semibold">{formatDateKeyDisplay(item.toDate)}</span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
                       </button>
+                      <div className="calendar-memo-item-actions calendar-saved-range-card-actions">
+                        <button
+                          type="button"
+                          className="calendar-link-btn calendar-memo-icon-btn"
+                          onClick={() => {
+                            setModalSavedNote(item);
+                            setSavedNoteEditDraft(savedNoteToEntryFields(item));
+                            setIsEditingSavedModal(true);
+                          }}
+                          aria-label={`Edit saved note: ${item.title.trim() || "Untitled"}`}
+                          title="Edit"
+                        >
+                          <MemoIconPencil />
+                        </button>
+                        <button
+                          type="button"
+                          className="calendar-memo-delete-btn"
+                          onClick={() => onDeleteSavedRangeNote(item.id)}
+                          aria-label={`Remove saved note: ${item.title.trim() || "Untitled"}`}
+                          title="Remove"
+                        >
+                          <MemoIconClose />
+                        </button>
+                      </div>
                     </li>
                   ))}
                 </ul>
@@ -1077,68 +1143,107 @@ export function NotesPanel({
       ) : null}
 
       {activeAction === "holidays" ? (
-        <>
-          <div className="calendar-mini-sheet calendar-holidays-sheet">
-            <div className="calendar-holidays-sheet-head">
-              <p className="calendar-holidays-sheet-title">Holidays this month</p>
-              {holidays.length > 0 ? (
-                <span className="calendar-holidays-count">{holidays.length}</span>
-              ) : null}
-            </div>
-            {holidays.length === 0 ? (
-              <p className="calendar-holidays-empty">No public or observance holidays listed for this month.</p>
-            ) : (
-              <ul className="calendar-holidays-list" role="list">
-                {holidays.map((holiday) => (
-                  <li key={`${holiday.label}-${holiday.date.toISOString()}`} className={`calendar-holiday-row ${holiday.tier}`}>
-                    <time className="calendar-holiday-date-badge" dateTime={holiday.date.toISOString().slice(0, 10)}>
-                      <span className="calendar-holiday-date-day">{holiday.date.getDate()}</span>
-                      <span className="calendar-holiday-date-mon">
-                        {new Intl.DateTimeFormat("en-US", { month: "short" }).format(holiday.date)}
-                      </span>
-                    </time>
-                    <div className="calendar-holiday-body">
-                      <span className="calendar-holiday-name">{holiday.label}</span>
-                      <span className={`calendar-holiday-tier ${holiday.tier}`}>
-                        {holiday.tier === "major" ? "Major" : "Observance"}
-                      </span>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
+        <div className="calendar-holidays-stack">
+          <div className="calendar-mini-sheet calendar-holidays-search">
+            <label className="calendar-field-label">
+              Search festival
+              <input
+                type="search"
+                value={holidaySearch}
+                onChange={(event) => setHolidaySearch(event.target.value)}
+                className="calendar-reminder-input w-full"
+                placeholder="Search by holiday name"
+                aria-label="Search holidays by festival name"
+              />
+            </label>
           </div>
-          <details className="calendar-mini-sheet calendar-holidays-year-details">
-            <summary className="calendar-holidays-year-summary">
+          <div
+            className={`calendar-mini-sheet calendar-holidays-accordion calendar-holidays-month-details ${
+              activeHolidaySection === "month" ? "is-open" : ""
+            }`}
+          >
+            <button
+              type="button"
+              className="calendar-holidays-year-summary"
+              onClick={() => setActiveHolidaySection("month")}
+              aria-expanded={activeHolidaySection === "month"}
+            >
+              <span className="calendar-holidays-year-summary-label">Holidays this month</span>
+              {filteredMonthHolidays.length > 0 ? <span className="calendar-holidays-count">{filteredMonthHolidays.length}</span> : null}
+            </button>
+            {activeHolidaySection === "month" ? (
+              filteredMonthHolidays.length === 0 ? (
+                <p className="calendar-holidays-empty">
+                  {holidays.length === 0
+                    ? "No public or observance holidays listed for this month."
+                    : "No festivals match your search."}
+                </p>
+              ) : (
+                <ul className="calendar-holidays-list calendar-holidays-list-scroll" role="list">
+                  {filteredMonthHolidays.map((holiday) => (
+                    <li key={`${holiday.label}-${holiday.date.toISOString()}`} className={`calendar-holiday-row ${holiday.tier}`}>
+                      <time className="calendar-holiday-date-badge" dateTime={holiday.date.toISOString().slice(0, 10)}>
+                        <span className="calendar-holiday-date-day">{holiday.date.getDate()}</span>
+                        <span className="calendar-holiday-date-mon">
+                          {new Intl.DateTimeFormat("en-US", { month: "short" }).format(holiday.date)}
+                        </span>
+                      </time>
+                      <div className="calendar-holiday-body">
+                        <span className="calendar-holiday-name">{holiday.label}</span>
+                        <span className={`calendar-holiday-tier ${holiday.tier}`}>
+                          {holiday.tier === "major" ? "Major" : "Observance"}
+                        </span>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )
+            ) : null}
+          </div>
+          <div
+            className={`calendar-mini-sheet calendar-holidays-accordion calendar-holidays-year-details ${
+              activeHolidaySection === "year" ? "is-open" : ""
+            }`}
+          >
+            <button
+              type="button"
+              className="calendar-holidays-year-summary"
+              onClick={() => setActiveHolidaySection("year")}
+              aria-expanded={activeHolidaySection === "year"}
+            >
               <span className="calendar-holidays-year-summary-label">All Indian holidays this year</span>
-              {currentYearHolidays.length > 0 ? (
-                <span className="calendar-holidays-count calendar-holidays-count-muted">{currentYearHolidays.length}</span>
+              {filteredYearHolidays.length > 0 ? (
+                <span className="calendar-holidays-count calendar-holidays-count-muted">{filteredYearHolidays.length}</span>
               ) : null}
-            </summary>
-            {currentYearHolidays.length === 0 ? (
-              <p className="calendar-holidays-empty">No holidays loaded for this year yet.</p>
-            ) : (
-              <ul className="calendar-holidays-list calendar-holidays-list-scroll" role="list">
-                {currentYearHolidays.map((holiday) => (
-                  <li key={`${holiday.label}-${holiday.date.toISOString()}`} className={`calendar-holiday-row ${holiday.tier}`}>
-                    <time className="calendar-holiday-date-badge" dateTime={holiday.date.toISOString().slice(0, 10)}>
-                      <span className="calendar-holiday-date-day">{holiday.date.getDate()}</span>
-                      <span className="calendar-holiday-date-mon">
-                        {new Intl.DateTimeFormat("en-US", { month: "short" }).format(holiday.date)}
-                      </span>
-                    </time>
-                    <div className="calendar-holiday-body">
-                      <span className="calendar-holiday-name">{holiday.label}</span>
-                      <span className={`calendar-holiday-tier ${holiday.tier}`}>
-                        {holiday.tier === "major" ? "Major" : "Observance"}
-                      </span>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </details>
-        </>
+            </button>
+            {activeHolidaySection === "year" ? (
+              filteredYearHolidays.length === 0 ? (
+                <p className="calendar-holidays-empty">
+                  {currentYearHolidays.length === 0 ? "No holidays loaded for this year yet." : "No festivals match your search."}
+                </p>
+              ) : (
+                <ul className="calendar-holidays-list calendar-holidays-list-scroll" role="list">
+                  {filteredYearHolidays.map((holiday) => (
+                    <li key={`${holiday.label}-${holiday.date.toISOString()}`} className={`calendar-holiday-row ${holiday.tier}`}>
+                      <time className="calendar-holiday-date-badge" dateTime={holiday.date.toISOString().slice(0, 10)}>
+                        <span className="calendar-holiday-date-day">{holiday.date.getDate()}</span>
+                        <span className="calendar-holiday-date-mon">
+                          {new Intl.DateTimeFormat("en-US", { month: "short" }).format(holiday.date)}
+                        </span>
+                      </time>
+                      <div className="calendar-holiday-body">
+                        <span className="calendar-holiday-name">{holiday.label}</span>
+                        <span className={`calendar-holiday-tier ${holiday.tier}`}>
+                          {holiday.tier === "major" ? "Major" : "Observance"}
+                        </span>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )
+            ) : null}
+          </div>
+        </div>
       ) : null}
     </aside>
     </>
