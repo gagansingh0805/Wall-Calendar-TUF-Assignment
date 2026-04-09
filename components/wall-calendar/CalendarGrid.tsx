@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { motion } from "framer-motion";
 import type { DateRange } from "@/components/wall-calendar/types";
 import { addDays, addMonths, buildCalendarGrid, formatDateKey, getWeekEnd, getWeekStart, isDateBetween, isWeekend, sameDay, startOfDay } from "@/lib/date";
 
@@ -23,9 +24,23 @@ type CalendarGridProps = {
   /** Date key (YYYY-MM-DD) → holiday name(s); used for hover title and accessible name. */
   holidayLabelsByDate: Record<string, string>;
   transitionKey: string;
+  onDropMemoToDate?: (memoId: string, date: Date) => void;
+  weatherByDate?: Record<string, { icon: string; description: string }>;
 };
 
 const weekdayLabels = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
+
+function weatherGlyphFromIcon(icon: string): string {
+  if (icon.startsWith("01")) return "☀️";
+  if (icon.startsWith("02")) return "🌤️";
+  if (icon.startsWith("03") || icon.startsWith("04")) return "☁️";
+  if (icon.startsWith("09")) return "🌧️";
+  if (icon.startsWith("10")) return "🌦️";
+  if (icon.startsWith("11")) return "⛈️";
+  if (icon.startsWith("13")) return "❄️";
+  if (icon.startsWith("50")) return "🌫️";
+  return "🌤️";
+}
 
 function getDayButtonClass({
   inCurrentMonth,
@@ -69,6 +84,8 @@ export function CalendarGrid({
   holidayTierByDate,
   holidayLabelsByDate,
   transitionKey,
+  onDropMemoToDate,
+  weatherByDate = {},
 }: CalendarGridProps) {
   const days = useMemo(() => buildCalendarGrid(monthDate), [monthDate]);
   const { start, end } = range;
@@ -219,6 +236,7 @@ export function CalendarGrid({
             isWeekend: isWeekend(date),
             holidayTier: holidayTierByDate[dateKey] ?? null,
           };
+          const weather = weatherByDate[dateKey];
 
           const buttonClasses = getDayButtonClass({
             inCurrentMonth,
@@ -229,7 +247,7 @@ export function CalendarGrid({
           });
 
           return (
-            <button
+            <motion.button
               type="button"
               key={date.toISOString()}
               onClick={() => onSelectDate(date)}
@@ -242,11 +260,27 @@ export function CalendarGrid({
                 setDragMoved(false);
               }}
               onDoubleClick={() => onDoubleClickDate(date)}
+              onDragOver={(event) => {
+                if (!onDropMemoToDate) return;
+                const memoId = event.dataTransfer.getData("application/x-wall-memo-id");
+                if (!memoId) return;
+                event.preventDefault();
+              }}
+              onDrop={(event) => {
+                if (!onDropMemoToDate) return;
+                const memoId = event.dataTransfer.getData("application/x-wall-memo-id");
+                if (!memoId) return;
+                event.preventDefault();
+                onDropMemoToDate(memoId, date);
+              }}
               onKeyDown={(event) => onDayKeyDown(event, date)}
               ref={(node) => {
                 dayRefs.current[dateKey] = node;
               }}
               className={buttonClasses}
+              whileHover={{ y: -1, scale: 1.01 }}
+              whileTap={{ scale: 0.97 }}
+              transition={{ duration: 0.14 }}
               tabIndex={sameDay(date, focusedDate) ? 0 : -1}
               role="gridcell"
               aria-selected={selectionMode === "multi" ? isMultiSelected : isInRange || isStart || isEnd}
@@ -259,13 +293,18 @@ export function CalendarGrid({
               }
             >
               {date.getDate()}
+              {weather ? (
+                <span className="calendar-weather-icon" title={`Weather: ${weather.description}`} aria-hidden>
+                  {weatherGlyphFromIcon(weather.icon)}
+                </span>
+              ) : null}
               <span
                 className={`calendar-day-dot ${
                   context.holidayTier ? `holiday ${context.holidayTier}` : context.isWeekend ? "weekend" : ""
                 }`}
                 aria-hidden
               />
-            </button>
+            </motion.button>
           );
         })}
       </div>

@@ -3,6 +3,18 @@
 :root {
   --background: #f2f4f8;
   --foreground: #0f172a;
+  --radius-sm: 0.5rem;
+  --radius-md: 0.85rem;
+  --radius-lg: 1.1rem;
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --elevation-soft: 0 8px 24px rgba(15, 23, 42, 0.11);
+  --elevation-md: 0 18px 40px rgba(15, 23, 42, 0.2);
+  --focus-ring: 0 0 0 3px color-mix(in srgb, var(--foreground) 18%, transparent);
 }
 
 @theme inline {
@@ -16,6 +28,16 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+}
+
+html[data-appearance="dark"] {
+  --background: #020617;
+  --foreground: #e2e8f0;
+}
+
+html[data-appearance="light"] {
+  --background: #f8fafc;
+  --foreground: #0f172a;
 }
 
 .calendar-page {
@@ -113,6 +135,14 @@ body[data-calendar-theme="sunset"] .calendar-page {
 
 body[data-calendar-theme="midnight"] .calendar-page {
   background: radial-gradient(circle at 20% 10%, #1e293b 0%, #0f172a 42%, #020617 100%);
+}
+
+html[data-appearance="light"] .calendar-page {
+  background: radial-gradient(circle at 16% 8%, #eef2ff 0%, #e2e8f0 38%, #f8fafc 100%);
+}
+
+html[data-appearance="dark"] .calendar-page {
+  background: radial-gradient(circle at 20% 10%, #111827 0%, #0f172a 46%, #020617 100%);
 }
 
 body[data-calendar-theme="midnight"] .calendar-stars {
@@ -780,6 +810,17 @@ body:not([data-calendar-theme="midnight"]) .shooting-star {
   border-radius: 999px;
   background: transparent;
   opacity: 0;
+}
+
+.calendar-weather-icon {
+  position: absolute;
+  top: 0.12rem;
+  right: 0.16rem;
+  font-size: 1.2rem;
+  line-height: 1;
+  opacity: 0.98;
+  text-shadow: 0 2px 8px rgba(2, 6, 23, 0.35);
+  pointer-events: none;
 }
 
 .calendar-day-dot.weekend {
@@ -1904,6 +1945,11 @@ body:not([data-calendar-theme="midnight"]) .shooting-star {
 .calendar-holidays-month-details {
   display: flex;
   flex-direction: column;
+  flex: 0 0 auto;
+  min-height: auto;
+}
+
+.calendar-holidays-month-details.is-open {
   flex: 1 1 auto;
   min-height: 0;
 }
@@ -1942,6 +1988,10 @@ body:not([data-calendar-theme="midnight"]) .shooting-star {
 .calendar-holidays-month-details .calendar-holidays-list-scroll {
   flex: 1 1 auto;
   min-height: 0;
+  max-height: 14rem;
+}
+
+.calendar-holidays-month-details.is-open .calendar-holidays-list-scroll {
   max-height: none;
 }
 

@@ -50,6 +50,7 @@ type NotesPanelProps = {
   onReminderDraftChange: (patch: Partial<NotesPanelProps["reminderDraft"]>) => void;
   onAddRecurringReminder: () => void;
   onDeleteRecurringReminder: (id: string) => void;
+  enableMemoDrag?: boolean;
   focusRangeNoteSignal?: number;
 };
 
@@ -248,6 +249,7 @@ export function NotesPanel({
   onReminderDraftChange,
   onAddRecurringReminder,
   onDeleteRecurringReminder,
+  enableMemoDrag = true,
   focusRangeNoteSignal = 0,
 }: NotesPanelProps) {
   const rangeNoteTitleRef = useRef<HTMLInputElement | null>(null);
@@ -331,14 +333,18 @@ export function NotesPanel({
   }, [focusRangeNoteSignal, onActionChange]);
 
   useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect -- reset inline editor when switching away from Month Memo */
     if (activeAction !== "monthMemo") setMemoEdit(null);
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, [activeAction]);
 
   useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect -- sync due date controls to calendar selection */
     if (!calendarDueDateKey?.trim()) return;
     const safeDueDate = calendarDueDateKey >= minDueDate ? calendarDueDateKey : "";
     setMemoDraftDueDate(safeDueDate);
     setMemoEdit((prev) => (prev ? { ...prev, dueDate: safeDueDate } : prev));
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, [calendarDueDateKey, minDueDate]);
 
   function beginMemoEdit(item: MemoItem) {
@@ -718,6 +724,12 @@ export function NotesPanel({
                       <li
                         key={item.id}
                         className={`calendar-memo-item-row ${isEditing ? "calendar-memo-item-row--editing" : ""}`}
+                        draggable={enableMemoDrag && !isEditing}
+                        onDragStart={(event) => {
+                          if (!enableMemoDrag || isEditing) return;
+                          event.dataTransfer.setData("application/x-wall-memo-id", item.id);
+                          event.dataTransfer.effectAllowed = "move";
+                        }}
                       >
                         {isEditing && memoEdit ? (
                           <MonthMemoInlineEditor
@@ -793,6 +805,12 @@ export function NotesPanel({
                       <li
                         key={item.id}
                         className={`calendar-memo-item-row calendar-memo-item-row--done ${isEditing ? "calendar-memo-item-row--editing" : ""}`}
+                        draggable={enableMemoDrag && !isEditing}
+                        onDragStart={(event) => {
+                          if (!enableMemoDrag || isEditing) return;
+                          event.dataTransfer.setData("application/x-wall-memo-id", item.id);
+                          event.dataTransfer.effectAllowed = "move";
+                        }}
                       >
                         {isEditing && memoEdit ? (
                           <MonthMemoInlineEditor

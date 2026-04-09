@@ -1,20 +1,19 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, type CSSProperties, type MouseEvent, type SyntheticEvent } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import { CalendarGrid } from "@/components/wall-calendar/CalendarGrid";
+import { QuickAddModal } from "@/components/wall-calendar/QuickAddModal";
+import { TimelineView } from "@/components/wall-calendar/TimelineView";
+import { HeatmapView } from "@/components/wall-calendar/HeatmapView";
+import { OnboardingHints } from "@/components/wall-calendar/OnboardingHints";
 import { NotesPanel } from "@/components/wall-calendar/NotesPanel";
 import type {
-  DateRange,
   RangeBadge,
   RangeNoteEntry,
   RecurringReminderRule,
   SavedRangeNote,
-  StoredNoteMap,
-  StoredRangeBadgeMap,
-  StoredRangeNoteMap,
   StoredRangeNoteValue,
-  StoredSavedRangeNotesMap,
-  StoredRecurringReminderMap,
   WeekdayCode,
 } from "@/components/wall-calendar/types";
 import {
@@ -36,7 +35,11 @@ import {
   startOfDay,
   toLocalDateKey,
 } from "@/lib/date";
-import { parseMemoItems } from "@/lib/memo-items";
+import { parseMemoItems, serializeMemoItems } from "@/lib/memo-items";
+import { useCalendar } from "@/hooks/useCalendar";
+import { useNotes } from "@/hooks/useNotes";
+import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
+import { useTheme as useAppearanceTheme } from "@/hooks/useTheme";
 
 const MONTH_NOTES_STORAGE_KEY = "wall-calendar-month-notes";
 const RANGE_NOTES_STORAGE_KEY = "wall-calendar-range-notes";
@@ -56,7 +59,8 @@ type DynamicAccent = {
 } | null;
 type HolidayRecord = { date: string; name: string };
 type HolidayTier = "major" | "minor";
-type HeroParallax = { x: number; y: number };
+type ToastMessage = { id: string; text: string };
+type WeatherItem = { icon: string; description: string };
 
 type ReminderDraft = {
   text: string;
@@ -67,20 +71,6 @@ type ReminderDraft = {
   count: string;
   until: string;
 };
-
-function useStoredMap(storageKey: string) {
-  const [state, setState] = useState<StoredNoteMap>(() => {
-    if (typeof window === "undefined") return {};
-    const saved = localStorage.getItem(storageKey);
-    return saved ? (JSON.parse(saved) as StoredNoteMap) : {};
-  });
-
-  useEffect(() => {
-    localStorage.setItem(storageKey, JSON.stringify(state));
-  }, [storageKey, state]);
-
-  return [state, setState] as const;
-}
 
 function migrateRangeNote(value: StoredRangeNoteValue | undefined): RangeNoteEntry {
   if (!value) return { fromDate: "", toDate: "", title: "", description: "", tag: "", priority: "medium" };
@@ -93,20 +83,6 @@ function migrateRangeNote(value: StoredRangeNoteValue | undefined): RangeNoteEnt
     tag: value.tag ?? "",
     priority: value.priority ?? "medium",
   };
-}
-
-function useStoredObject<T>(storageKey: string, fallback: T) {
-  const [state, setState] = useState<T>(() => {
-    if (typeof window === "undefined") return fallback;
-    const saved = localStorage.getItem(storageKey);
-    return saved ? (JSON.parse(saved) as T) : fallback;
-  });
-
-  useEffect(() => {
-    localStorage.setItem(storageKey, JSON.stringify(state));
-  }, [storageKey, state]);
-
-  return [state, setState] as const;
 }
 
 function guessRangeBadge(start: Date, end: Date): Pick<RangeBadge, "kind" | "label"> {
@@ -174,7 +150,7 @@ function occursOnDate(rule: RecurringReminderRule, date: Date): boolean {
   return true;
 }
 
-function useTheme(theme: ThemeName) {
+function useCalendarTheme(theme: ThemeName) {
   useEffect(() => {
     document.body.setAttribute("data-calendar-theme", theme);
     return () => document.body.removeAttribute("data-calendar-theme");
@@ -295,36 +271,53 @@ function suggestThemeFromHue(hue: number): ThemeName {
 }
 
 export function WallCalendar() {
-  const [viewDate, setViewDate] = useState<Date>(new Date());
-  const [theme, setTheme] = useState<ThemeName>("midnight");
+  const {
+    viewDate,
+    setViewDate,
+    theme,
+    setTheme,
+    heroParallax,
+    setHeroParallax,
+    range,
+    setRange,
+    holidaysByYear,
+    setHolidaysByYear,
+    activeAction,
+    setActiveAction,
+    activityScope,
+    setActivityScope,
+  } = useCalendar();
+  const {
+    monthNotes,
+    setMonthNotes,
+    rangeNotes,
+    setRangeNotes,
+    savedRangeNotesByMonth,
+    setSavedRangeNotesByMonth,
+    setRangeBadges,
+    recurringReminders,
+    setRecurringReminders,
+    reminderDraft,
+    setReminderDraft,
+  } = useNotes({
+    monthNotes: MONTH_NOTES_STORAGE_KEY,
+    rangeNotes: RANGE_NOTES_STORAGE_KEY,
+    savedRangeNotes: SAVED_RANGE_NOTES_STORAGE_KEY,
+    rangeBadges: RANGE_BADGES_STORAGE_KEY,
+    recurringReminders: RECURRING_REMINDERS_STORAGE_KEY,
+  });
+  const { toggleAppearance } = useAppearanceTheme();
+  const [quickAddOpen, setQuickAddOpen] = useState(false);
+  const [showInsights, setShowInsights] = useState(false);
+  const [mobilePanelOpen, setMobilePanelOpen] = useState(false);
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
+  const [weatherByDate, setWeatherByDate] = useState<Record<string, WeatherItem>>({});
   const [dynamicAccent, setDynamicAccent] = useState<DynamicAccent>(null);
   const [suggestedTheme, setSuggestedTheme] = useState<ThemeName | null>(null);
-  const [heroParallax, setHeroParallax] = useState<HeroParallax>({ x: 0, y: 0 });
-  const [range, setRange] = useState<DateRange>({ start: null, end: null });
-  const [holidaysByYear, setHolidaysByYear] = useState<Record<number, HolidayRecord[]>>({});
-  const [activeAction, setActiveAction] = useState<"monthMemo" | "rangeNote" | "recurring" | "holidays">("monthMemo");
-  const [monthNotes, setMonthNotes] = useStoredMap(MONTH_NOTES_STORAGE_KEY);
-  const [rangeNotes, setRangeNotes] = useStoredObject<StoredRangeNoteMap>(RANGE_NOTES_STORAGE_KEY, {});
-  const [savedRangeNotesByMonth, setSavedRangeNotesByMonth] = useStoredObject<StoredSavedRangeNotesMap>(
-    SAVED_RANGE_NOTES_STORAGE_KEY,
-    {},
-  );
-  const [, setRangeBadges] = useStoredObject<StoredRangeBadgeMap>(RANGE_BADGES_STORAGE_KEY, {});
-  const [recurringReminders, setRecurringReminders] = useStoredObject<StoredRecurringReminderMap>(RECURRING_REMINDERS_STORAGE_KEY, {});
-  const [activityScope, setActivityScope] = useState<ActivityScope>("7d");
-  const [reminderDraft, setReminderDraft] = useState<ReminderDraft>({
-    text: "",
-    freq: "monthly",
-    interval: 1,
-    byMonthDay: "",
-    byWeekday: [],
-    count: "",
-    until: "",
-  });
-  const [recurringSelectedDays, setRecurringSelectedDays] = useState<number[]>([]);
   const { heroGif, isLoadingGif, isRibbonStretching, onRibbonTap, onRibbonAnimationEnd } = useHeroGifLoader();
-  useTheme(theme);
+  useCalendarTheme(theme);
   const isRecurringMonthly = activeAction === "recurring" && reminderDraft.freq === "monthly";
+  const recurringSelectedDays = useMemo(() => parseMonthDays(reminderDraft.byMonthDay), [reminderDraft.byMonthDay]);
 
   useEffect(() => {
     if (activeAction !== "monthMemo") return;
@@ -334,11 +327,101 @@ export function WallCalendar() {
       const d = startOfDay(prev.end);
       return { start: d, end: d };
     });
-  }, [activeAction]);
+  }, [activeAction, setRange]);
+
+  const pushToast = useCallback((text: string) => {
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    setToasts((prev) => [...prev, { id, text }]);
+    window.setTimeout(() => {
+      setToasts((prev) => prev.filter((toast) => toast.id !== id));
+    }, 2200);
+  }, []);
+
+  useKeyboardShortcuts({
+    onQuickAdd: () => setQuickAddOpen(true),
+    onToggleAppearance: toggleAppearance,
+    onSwitchToMonthMemo: () => setActiveAction("monthMemo"),
+    onSwitchToRangeNote: () => setActiveAction("rangeNote"),
+    onSwitchToRecurring: () => setActiveAction("recurring"),
+    onSwitchToHolidays: () => setActiveAction("holidays"),
+    onPrevMonth: () => moveMonth(-1),
+    onNextMonth: () => moveMonth(1),
+    onEscape: () => {
+      setQuickAddOpen(false);
+      setMobilePanelOpen(false);
+    },
+  });
 
   useEffect(() => {
-    setRecurringSelectedDays(parseMonthDays(reminderDraft.byMonthDay));
-  }, [reminderDraft.byMonthDay]);
+    let cancelled = false;
+    const fallbackCoords = { lat: 28.6139, lon: 77.209 }; // Delhi NCR fallback
+    const fallbackIconCycle = ["01d", "02d", "03d", "04d", "10d", "09d", "11d"] as const;
+
+    function buildFallbackWeather(): Record<string, WeatherItem> {
+      const next: Record<string, WeatherItem> = {};
+      for (let i = 0; i < 7; i += 1) {
+        const date = addDays(startOfDay(new Date()), i);
+        const key = toLocalDateKey(date);
+        const icon = fallbackIconCycle[i % fallbackIconCycle.length];
+        next[key] = { icon, description: "Forecast unavailable" };
+      }
+      return next;
+    }
+
+    async function loadWeather(lat: number, lon: number) {
+      try {
+        const response = await fetch(`/api/weather?lat=${lat}&lon=${lon}`, { cache: "no-store" });
+        if (!response.ok) {
+          if (!cancelled) setWeatherByDate(buildFallbackWeather());
+          return;
+        }
+        const data = (await response.json()) as { forecast?: Array<{ date: string; icon: string; description: string }> };
+        const next = (data.forecast ?? []).reduce<Record<string, WeatherItem>>((acc, day) => {
+          if (!day.date || !day.icon) return acc;
+          acc[day.date] = { icon: day.icon, description: day.description || "Forecast" };
+          return acc;
+        }, {});
+        if (!cancelled) setWeatherByDate(Object.keys(next).length > 0 ? next : buildFallbackWeather());
+      } catch {
+        if (!cancelled) setWeatherByDate(buildFallbackWeather());
+      }
+    }
+
+    async function loadWithGeolocationFallback() {
+      if (typeof navigator === "undefined" || !navigator.geolocation) {
+        await loadWeather(fallbackCoords.lat, fallbackCoords.lon);
+        return;
+      }
+
+      try {
+        if ("permissions" in navigator && navigator.permissions?.query) {
+          const permission = await navigator.permissions.query({ name: "geolocation" });
+          if (permission.state === "denied") {
+            await loadWeather(fallbackCoords.lat, fallbackCoords.lon);
+            return;
+          }
+        }
+      } catch {
+        // If permissions API fails, continue to geolocation request.
+      }
+
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          void loadWeather(position.coords.latitude, position.coords.longitude);
+        },
+        () => {
+          // Permission denied or location unavailable -> Delhi NCR fallback.
+          void loadWeather(fallbackCoords.lat, fallbackCoords.lon);
+        },
+        { timeout: 6000, maximumAge: 10 * 60 * 1000 },
+      );
+    }
+
+    void loadWithGeolocationFallback();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const monthId = monthKey(viewDate);
   const rangeId = rangeKey(range.start, range.end);
@@ -401,8 +484,8 @@ export function WallCalendar() {
     return merged;
   }, [holidaysThisMonth]);
   const monthTransitionKey = useMemo(() => monthKey(viewDate), [viewDate]);
-  const remindersForMonth = recurringReminders[monthId] ?? [];
-  const savedRangeNotesForMonth = savedRangeNotesByMonth[monthId] ?? [];
+  const remindersForMonth = useMemo(() => recurringReminders[monthId] ?? [], [monthId, recurringReminders]);
+  const savedRangeNotesForMonth = useMemo(() => savedRangeNotesByMonth[monthId] ?? [], [monthId, savedRangeNotesByMonth]);
   const reminderInstances = useMemo(() => {
     const daysInMonth = new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 0).getDate();
     const instances: Array<{ id: string; text: string; date: Date }> = [];
@@ -619,6 +702,34 @@ export function WallCalendar() {
           ? "Nothing in the next 7 days."
           : "Nothing in the next 30 days.";
 
+  const timelineItems = useMemo(
+    () =>
+      activityDisplayRows.slice(0, 8).map((row) => ({
+        id: row.id,
+        title: row.primary,
+        label: row.dateLabel,
+      })),
+    [activityDisplayRows],
+  );
+
+  const heatmapPoints = useMemo(() => {
+    const daysInMonth = new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 0).getDate();
+    const list: Array<{ dateKey: string; count: number }> = [];
+    for (let day = 1; day <= daysInMonth; day += 1) {
+      const date = new Date(viewDate.getFullYear(), viewDate.getMonth(), day);
+      const dateKey = toLocalDateKey(date);
+      const count = activityDisplayRows.filter((row) => row.dateLabel.includes(String(day))).length;
+      list.push({ dateKey, count });
+    }
+    return list;
+  }, [activityDisplayRows, viewDate]);
+
+  const smartSuggestion = useMemo(() => {
+    if (timelineItems.length === 0) return "No workload detected. Plan one high-impact task.";
+    if (timelineItems.length > 8) return "Busy window ahead: consider spreading deadlines across the week.";
+    return "Balanced schedule. Add one stretch goal for momentum.";
+  }, [timelineItems.length]);
+
   const liveSummary = useMemo(() => {
     const rangeText = range.start && range.end ? `${formatRangeLabel(range.start, range.end)}, ${rangeLength} days` : "No range selected";
     return `${rangeText}. ${reminderInstances.length} reminder occurrence${reminderInstances.length === 1 ? "" : "s"} this month.`;
@@ -682,7 +793,7 @@ export function WallCalendar() {
     return () => {
       isCancelled = true;
     };
-  }, [holidaysByYear, viewDate]);
+  }, [holidaysByYear, setHolidaysByYear, viewDate]);
 
   function moveMonth(delta: number) {
     setViewDate((current) => new Date(current.getFullYear(), current.getMonth() + delta, 1));
@@ -704,12 +815,11 @@ export function WallCalendar() {
     const clicked = startOfDay(date);
     if (isRecurringMonthly) {
       const day = clicked.getDate();
-      setRecurringSelectedDays((prev) => {
-        const next = prev.includes(day) ? prev.filter((item) => item !== day) : [...prev, day];
-        const sorted = [...next].sort((a, b) => a - b);
-        setReminderDraft((draft) => ({ ...draft, byMonthDay: sorted.join(",") }));
-        return sorted;
-      });
+      const next = recurringSelectedDays.includes(day)
+        ? recurringSelectedDays.filter((item) => item !== day)
+        : [...recurringSelectedDays, day];
+      const sorted = [...new Set(next)].sort((a, b) => a - b);
+      setReminderDraft((draft) => ({ ...draft, byMonthDay: sorted.join(",") }));
       return;
     }
     if (activeAction === "monthMemo") {
@@ -809,10 +919,12 @@ export function WallCalendar() {
     };
     setRecurringReminders((prev) => ({ ...prev, [monthId]: [...(prev[monthId] ?? []), nextRule] }));
     setReminderDraft((prev) => ({ ...prev, text: "", count: "", until: "" }));
+    pushToast("Recurring reminder added.");
   }
 
   function onDeleteRecurringReminder(id: string) {
     setRecurringReminders((prev) => ({ ...prev, [monthId]: (prev[monthId] ?? []).filter((item) => item.id !== id) }));
+    pushToast("Recurring reminder removed.");
   }
 
   function onJumpToDate(date: Date) {
@@ -828,6 +940,34 @@ export function WallCalendar() {
 
   function onMonthNoteChange(value: string) {
     setMonthNotes((prev) => ({ ...prev, [monthId]: value }));
+  }
+
+  function onQuickAddMemo(payload: { text: string; dueDate: string }) {
+    const currentItems = parseMemoItems(monthNote);
+    const nextItems = [
+      ...currentItems,
+      {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        text: payload.text,
+        done: false,
+        priority: "medium" as const,
+        dueDate: payload.dueDate || (range.start ? toLocalDateKey(range.start) : ""),
+        addedDate: toLocalDateKey(new Date()),
+      },
+    ];
+    onMonthNoteChange(serializeMemoItems(nextItems));
+    setActiveAction("monthMemo");
+    pushToast("Quick note added.");
+  }
+
+  function onDropMemoToDate(memoId: string, date: Date) {
+    const dueDate = toLocalDateKey(date);
+    const currentItems = parseMemoItems(monthNote);
+    const nextItems = currentItems.map((item) => (item.id === memoId ? { ...item, dueDate } : item));
+    onMonthNoteChange(serializeMemoItems(nextItems));
+    setActiveAction("monthMemo");
+    setRange({ start: startOfDay(date), end: startOfDay(date) });
+    pushToast(`Moved note to ${new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(date)}.`);
   }
 
   function onRangeNoteChangePatch(patch: Partial<RangeNoteEntry>) {
@@ -886,6 +1026,7 @@ export function WallCalendar() {
       return next;
     });
     clearSelection();
+    pushToast("Range note saved.");
   }
 
   function onDeleteSavedRangeNote(id: string) {
@@ -893,6 +1034,7 @@ export function WallCalendar() {
       ...prev,
       [monthId]: (prev[monthId] ?? []).filter((item) => item.id !== id),
     }));
+    pushToast("Saved note deleted.");
   }
 
   function onUpdateSavedRangeNote(id: string, patch: Partial<RangeNoteEntry>) {
@@ -914,6 +1056,7 @@ export function WallCalendar() {
         [monthId]: list.map((entry) => (entry.id === id ? merged : entry)),
       };
     });
+    pushToast("Saved note updated.");
   }
 
   function onHeroImageLoad(event: SyntheticEvent<HTMLImageElement>) {
@@ -1010,10 +1153,19 @@ export function WallCalendar() {
                 <span key={`${letter}-${index}`}>{letter}</span>
               ))}
             </div>
+            <OnboardingHints activeAction={activeAction} />
+            <div className="flex items-center gap-2 md:hidden">
+              <button type="button" className="calendar-chip" onClick={() => setMobilePanelOpen(true)}>
+                Open Notes
+              </button>
+              <button type="button" className="calendar-chip" onClick={() => setShowInsights((prev) => !prev)}>
+                {showInsights ? "Hide Insights" : "Show Insights"}
+              </button>
+            </div>
           </div>
         </div>
 
-        <div className="calendar-panel flex min-h-0 flex-col rounded-2xl p-3 md:col-start-2 md:row-start-1 md:h-full md:p-4">
+        <div className="calendar-panel flex min-h-0 flex-col overflow-y-auto rounded-2xl p-3 md:col-start-2 md:row-start-1 md:h-full md:p-4">
           <div className="mb-3 shrink-0 space-y-3">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0 space-y-1">
@@ -1094,24 +1246,36 @@ export function WallCalendar() {
             </div>
           </div>
           <div className="shrink-0">
-            <CalendarGrid
-              monthDate={viewDate}
-              range={range}
-              selectionMode={activeAction === "monthMemo" ? "single" : isRecurringMonthly ? "multi" : "range"}
-              selectedDayNumbers={isRecurringMonthly ? recurringSelectedDays : []}
-              onSelectDate={onSelectDate}
-              monthOptions={monthOptions}
-              yearOptions={yearOptions}
-              onMonthSelect={onMonthSelect}
-              onYearSelect={onYearSelect}
-              onMoveMonth={moveMonth}
-              onJumpToDate={onJumpToDate}
-              onSelectRange={onSelectRange}
-              onDoubleClickDate={onDoubleClickDate}
-              holidayTierByDate={holidayTierByDate}
-              holidayLabelsByDate={holidayLabelsByDate}
-              transitionKey={monthTransitionKey}
-            />
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.div
+                key={monthTransitionKey}
+                initial={{ opacity: 0, y: 8, scale: 0.985 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -6, scale: 0.99 }}
+                transition={{ type: "spring", stiffness: 280, damping: 24 }}
+              >
+                <CalendarGrid
+                  monthDate={viewDate}
+                  range={range}
+                  selectionMode={activeAction === "monthMemo" ? "single" : isRecurringMonthly ? "multi" : "range"}
+                  selectedDayNumbers={isRecurringMonthly ? recurringSelectedDays : []}
+                  onSelectDate={onSelectDate}
+                  monthOptions={monthOptions}
+                  yearOptions={yearOptions}
+                  onMonthSelect={onMonthSelect}
+                  onYearSelect={onYearSelect}
+                  onMoveMonth={moveMonth}
+                  onJumpToDate={onJumpToDate}
+                  onSelectRange={onSelectRange}
+                  onDoubleClickDate={onDoubleClickDate}
+                  onDropMemoToDate={onDropMemoToDate}
+                  weatherByDate={weatherByDate}
+                  holidayTierByDate={holidayTierByDate}
+                  holidayLabelsByDate={holidayLabelsByDate}
+                  transitionKey={monthTransitionKey}
+                />
+              </motion.div>
+            </AnimatePresence>
           </div>
           <div className="mt-3 flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-[color:var(--theme-panel-border)] bg-[color:var(--theme-notes-bg)] p-2.5 md:min-h-[10rem]">
             <div className="mb-2 flex shrink-0 flex-wrap items-center justify-between gap-2">
@@ -1159,41 +1323,128 @@ export function WallCalendar() {
               </div>
             )}
           </div>
+          {showInsights ? (
+            <div className="mt-2 grid gap-2 md:grid-cols-2">
+              <TimelineView items={timelineItems} />
+              <HeatmapView points={heatmapPoints} />
+            </div>
+          ) : null}
           <p className="sr-only" aria-live="polite">
             {liveSummary}
           </p>
         </div>
         <div
-          className="md:col-start-3 md:row-start-1 md:h-full md:min-h-0 md:overflow-hidden md:pr-1 md:pb-1"
+          className="hidden md:col-start-3 md:row-start-1 md:block md:h-full md:min-h-0 md:overflow-hidden md:pr-1 md:pb-1"
           role="region"
           aria-label="Notes and reminder tools"
           tabIndex={0}
         >
-          <NotesPanel
-            theme={theme}
-            monthLabel={monthLabel}
-            rangeLabel={rangeLabel}
-            monthNote={monthNote}
-            rangeNote={selectedRangeNote}
-            activeAction={activeAction}
-            holidays={holidaysThisMonth}
-            currentYearHolidays={currentYearHolidays}
-            onActionChange={setActiveAction}
-            onMonthNoteChange={onMonthNoteChange}
-            onRangeNoteChange={onRangeNoteChangePatch}
-            calendarDueDateKey={calendarDueDateKey}
-            savedRangeNotes={savedRangeNotesForMonth}
-            onSaveRangeNote={onSaveRangeNote}
-            onDeleteSavedRangeNote={onDeleteSavedRangeNote}
-            onUpdateSavedRangeNote={onUpdateSavedRangeNote}
-            reminderDraft={reminderDraft}
-            reminders={remindersForMonth}
-            reminderInstances={reminderInstances}
-            onReminderDraftChange={onReminderDraftChange}
-            onAddRecurringReminder={onAddRecurringReminder}
-            onDeleteRecurringReminder={onDeleteRecurringReminder}
-          />
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.div
+              key={activeAction}
+              initial={{ opacity: 0, x: 10 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -8 }}
+              transition={{ duration: 0.18 }}
+              className="h-full"
+            >
+              <NotesPanel
+                theme={theme}
+                monthLabel={monthLabel}
+                rangeLabel={rangeLabel}
+                monthNote={monthNote}
+                rangeNote={selectedRangeNote}
+                activeAction={activeAction}
+                holidays={holidaysThisMonth}
+                currentYearHolidays={currentYearHolidays}
+                onActionChange={setActiveAction}
+                onMonthNoteChange={onMonthNoteChange}
+                onRangeNoteChange={onRangeNoteChangePatch}
+                calendarDueDateKey={calendarDueDateKey}
+                savedRangeNotes={savedRangeNotesForMonth}
+                onSaveRangeNote={onSaveRangeNote}
+                onDeleteSavedRangeNote={onDeleteSavedRangeNote}
+                onUpdateSavedRangeNote={onUpdateSavedRangeNote}
+                reminderDraft={reminderDraft}
+                reminders={remindersForMonth}
+                reminderInstances={reminderInstances}
+                onReminderDraftChange={onReminderDraftChange}
+                onAddRecurringReminder={onAddRecurringReminder}
+                onDeleteRecurringReminder={onDeleteRecurringReminder}
+                enableMemoDrag
+              />
+            </motion.div>
+          </AnimatePresence>
         </div>
+      </div>
+      <AnimatePresence>
+        {mobilePanelOpen ? (
+          <motion.div
+            className="fixed inset-0 z-50 bg-black/40 p-2 md:hidden"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setMobilePanelOpen(false)}
+          >
+            <motion.div
+              initial={{ y: 30, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: 30, opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="mx-auto mt-8 h-[88vh] max-w-2xl"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <NotesPanel
+                theme={theme}
+                monthLabel={monthLabel}
+                rangeLabel={rangeLabel}
+                monthNote={monthNote}
+                rangeNote={selectedRangeNote}
+                activeAction={activeAction}
+                holidays={holidaysThisMonth}
+                currentYearHolidays={currentYearHolidays}
+                onActionChange={setActiveAction}
+                onMonthNoteChange={onMonthNoteChange}
+                onRangeNoteChange={onRangeNoteChangePatch}
+                calendarDueDateKey={calendarDueDateKey}
+                savedRangeNotes={savedRangeNotesForMonth}
+                onSaveRangeNote={onSaveRangeNote}
+                onDeleteSavedRangeNote={onDeleteSavedRangeNote}
+                onUpdateSavedRangeNote={onUpdateSavedRangeNote}
+                reminderDraft={reminderDraft}
+                reminders={remindersForMonth}
+                reminderInstances={reminderInstances}
+                onReminderDraftChange={onReminderDraftChange}
+                onAddRecurringReminder={onAddRecurringReminder}
+                onDeleteRecurringReminder={onDeleteRecurringReminder}
+                enableMemoDrag
+              />
+            </motion.div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+      <QuickAddModal
+        key={calendarDueDateKey || "today"}
+        open={quickAddOpen}
+        defaultDateKey={calendarDueDateKey || toLocalDateKey(new Date())}
+        onClose={() => setQuickAddOpen(false)}
+        onSubmit={onQuickAddMemo}
+      />
+      <div className="pointer-events-none fixed right-3 top-3 z-[70] flex max-w-xs flex-col gap-2">
+        <AnimatePresence>
+          {toasts.map((toast) => (
+            <motion.div
+              key={toast.id}
+              initial={{ opacity: 0, y: -8, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -6 }}
+              transition={{ duration: 0.16 }}
+              className="calendar-panel rounded-xl px-3 py-2 text-xs font-medium shadow-lg"
+            >
+              {toast.text}
+            </motion.div>
+          ))}
+        </AnimatePresence>
       </div>
     </section>
   );
