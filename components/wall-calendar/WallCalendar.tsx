@@ -4,8 +4,6 @@ import { useCallback, useEffect, useMemo, useState, type CSSProperties, type Mou
 import { AnimatePresence, motion } from "framer-motion";
 import { CalendarGrid } from "@/components/wall-calendar/CalendarGrid";
 import { QuickAddModal } from "@/components/wall-calendar/QuickAddModal";
-import { TimelineView } from "@/components/wall-calendar/TimelineView";
-import { HeatmapView } from "@/components/wall-calendar/HeatmapView";
 import { OnboardingHints } from "@/components/wall-calendar/OnboardingHints";
 import { NotesPanel } from "@/components/wall-calendar/NotesPanel";
 import type {
@@ -308,8 +306,6 @@ export function WallCalendar() {
   });
   const { toggleAppearance } = useAppearanceTheme();
   const [quickAddOpen, setQuickAddOpen] = useState(false);
-  const [showInsights, setShowInsights] = useState(false);
-  const [mobilePanelOpen, setMobilePanelOpen] = useState(false);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [weatherByDate, setWeatherByDate] = useState<Record<string, WeatherItem>>({});
   const [dynamicAccent, setDynamicAccent] = useState<DynamicAccent>(null);
@@ -348,7 +344,6 @@ export function WallCalendar() {
     onNextMonth: () => moveMonth(1),
     onEscape: () => {
       setQuickAddOpen(false);
-      setMobilePanelOpen(false);
     },
   });
 
@@ -701,34 +696,6 @@ export function WallCalendar() {
         : activityScope === "7d"
           ? "Nothing in the next 7 days."
           : "Nothing in the next 30 days.";
-
-  const timelineItems = useMemo(
-    () =>
-      activityDisplayRows.slice(0, 8).map((row) => ({
-        id: row.id,
-        title: row.primary,
-        label: row.dateLabel,
-      })),
-    [activityDisplayRows],
-  );
-
-  const heatmapPoints = useMemo(() => {
-    const daysInMonth = new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 0).getDate();
-    const list: Array<{ dateKey: string; count: number }> = [];
-    for (let day = 1; day <= daysInMonth; day += 1) {
-      const date = new Date(viewDate.getFullYear(), viewDate.getMonth(), day);
-      const dateKey = toLocalDateKey(date);
-      const count = activityDisplayRows.filter((row) => row.dateLabel.includes(String(day))).length;
-      list.push({ dateKey, count });
-    }
-    return list;
-  }, [activityDisplayRows, viewDate]);
-
-  const smartSuggestion = useMemo(() => {
-    if (timelineItems.length === 0) return "No workload detected. Plan one high-impact task.";
-    if (timelineItems.length > 8) return "Busy window ahead: consider spreading deadlines across the week.";
-    return "Balanced schedule. Add one stretch goal for momentum.";
-  }, [timelineItems.length]);
 
   const liveSummary = useMemo(() => {
     const rangeText = range.start && range.end ? `${formatRangeLabel(range.start, range.end)}, ${rangeLength} days` : "No range selected";
@@ -1154,14 +1121,6 @@ export function WallCalendar() {
               ))}
             </div>
             <OnboardingHints activeAction={activeAction} />
-            <div className="flex items-center gap-2 md:hidden">
-              <button type="button" className="calendar-chip" onClick={() => setMobilePanelOpen(true)}>
-                Open Notes
-              </button>
-              <button type="button" className="calendar-chip" onClick={() => setShowInsights((prev) => !prev)}>
-                {showInsights ? "Hide Insights" : "Show Insights"}
-              </button>
-            </div>
           </div>
         </div>
 
@@ -1323,18 +1282,12 @@ export function WallCalendar() {
               </div>
             )}
           </div>
-          {showInsights ? (
-            <div className="mt-2 grid gap-2 md:grid-cols-2">
-              <TimelineView items={timelineItems} />
-              <HeatmapView points={heatmapPoints} />
-            </div>
-          ) : null}
           <p className="sr-only" aria-live="polite">
             {liveSummary}
           </p>
         </div>
         <div
-          className="hidden md:col-start-3 md:row-start-1 md:block md:h-full md:min-h-0 md:overflow-hidden md:pr-1 md:pb-1"
+          className="mt-3 md:col-start-3 md:row-start-1 md:mt-0 md:h-full md:min-h-0 md:overflow-hidden md:pr-1 md:pb-1"
           role="region"
           aria-label="Notes and reminder tools"
           tabIndex={0}
@@ -1377,52 +1330,6 @@ export function WallCalendar() {
           </AnimatePresence>
         </div>
       </div>
-      <AnimatePresence>
-        {mobilePanelOpen ? (
-          <motion.div
-            className="fixed inset-0 z-50 bg-black/40 p-2 md:hidden"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={() => setMobilePanelOpen(false)}
-          >
-            <motion.div
-              initial={{ y: 30, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              exit={{ y: 30, opacity: 0 }}
-              transition={{ duration: 0.2 }}
-              className="mx-auto mt-8 h-[88vh] max-w-2xl"
-              onClick={(event) => event.stopPropagation()}
-            >
-              <NotesPanel
-                theme={theme}
-                monthLabel={monthLabel}
-                rangeLabel={rangeLabel}
-                monthNote={monthNote}
-                rangeNote={selectedRangeNote}
-                activeAction={activeAction}
-                holidays={holidaysThisMonth}
-                currentYearHolidays={currentYearHolidays}
-                onActionChange={setActiveAction}
-                onMonthNoteChange={onMonthNoteChange}
-                onRangeNoteChange={onRangeNoteChangePatch}
-                calendarDueDateKey={calendarDueDateKey}
-                savedRangeNotes={savedRangeNotesForMonth}
-                onSaveRangeNote={onSaveRangeNote}
-                onDeleteSavedRangeNote={onDeleteSavedRangeNote}
-                onUpdateSavedRangeNote={onUpdateSavedRangeNote}
-                reminderDraft={reminderDraft}
-                reminders={remindersForMonth}
-                reminderInstances={reminderInstances}
-                onReminderDraftChange={onReminderDraftChange}
-                onAddRecurringReminder={onAddRecurringReminder}
-                onDeleteRecurringReminder={onDeleteRecurringReminder}
-                enableMemoDrag
-              />
-            </motion.div>
-          </motion.div>
-        ) : null}
-      </AnimatePresence>
       <QuickAddModal
         key={calendarDueDateKey || "today"}
         open={quickAddOpen}
