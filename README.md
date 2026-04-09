@@ -41,9 +41,10 @@ Environment variable for GIF API:
 
 ```bash
 GIPHY_API_KEY=your_giphy_key
+OPENWEATHER_API_KEY=your_openweather_key
 ```
 
-If not provided, the app will fall back to static GIF URLs only.
+If `GIPHY_API_KEY` is not provided, the app will fall back to static GIF URLs only.
 
 ### Quality Checks
 
@@ -71,14 +72,5 @@ npm run build
 
 ## Submission Links
 
-- Repository: `<add-public-github-or-gitlab-link>`
-- Video demo (required): `<add-loom-or-youtube-link>`
-- Live demo (optional): `<add-vercel-or-netlify-link>`
-
-## Suggested Video Walkthrough Script
-
-1. Show desktop layout and visual wall-calendar styling.
-2. Select a date range and show start/end/in-between highlight behavior.
-3. Add month note and range note.
-4. Refresh page to demonstrate persistence.
-5. Resize to mobile width and demonstrate usability.
+- Source Code (GitHub): [https://github.com/gagansingh0805/Wall-Calendar-TUF-Assignment](https://github.com/gagansingh0805/Wall-Calendar-TUF-Assignment)
+- Live Demo: [https://wall-calendar-tuf-assignment.vercel.app/](https://wall-calendar-tuf-assignment.vercel.app/)
