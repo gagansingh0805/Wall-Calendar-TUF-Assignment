@@ -8,7 +8,8 @@ type CalendarGridProps = {
   monthDate: Date;
   range: DateRange;
   /** When "single", drag does not create a range; only click/tap selects one day. */
-  selectionMode?: "range" | "single";
+  selectionMode?: "range" | "single" | "multi";
+  selectedDayNumbers?: number[];
   onSelectDate: (date: Date) => void;
   monthOptions: Array<{ value: number; label: string }>;
   yearOptions: number[];
@@ -31,11 +32,13 @@ function getDayButtonClass({
   isInRange,
   isToday,
   isEdge,
+  isMultiSelected,
 }: {
   inCurrentMonth: boolean;
   isInRange: boolean;
   isToday: boolean;
   isEdge: boolean;
+  isMultiSelected: boolean;
 }) {
   return [
     "calendar-day-btn relative flex h-8 w-full items-center justify-center rounded-full text-xs font-medium transition-all duration-150 sm:h-9 sm:text-sm",
@@ -43,6 +46,7 @@ function getDayButtonClass({
     isInRange ? "calendar-day-in-range" : "",
     isToday ? "calendar-day-today" : "",
     isEdge ? "calendar-day-edge" : "",
+    isMultiSelected ? "calendar-day-multi" : "",
   ]
     .join(" ")
     .trim();
@@ -52,6 +56,7 @@ export function CalendarGrid({
   monthDate,
   range,
   selectionMode = "range",
+  selectedDayNumbers = [],
   onSelectDate,
   monthOptions,
   yearOptions,
@@ -68,6 +73,7 @@ export function CalendarGrid({
   const days = useMemo(() => buildCalendarGrid(monthDate), [monthDate]);
   const { start, end } = range;
   const allowRangeDrag = selectionMode === "range";
+  const selectedDaySet = useMemo(() => new Set(selectedDayNumbers), [selectedDayNumbers]);
   const [focusedDate, setFocusedDate] = useState<Date>(start ?? startOfDay(new Date()));
   const [dragAnchor, setDragAnchor] = useState<Date | null>(null);
   const [dragCurrent, setDragCurrent] = useState<Date | null>(null);
@@ -206,6 +212,7 @@ export function CalendarGrid({
           const effectiveStart = previewRange?.start ?? start;
           const effectiveEnd = previewRange?.end ?? end;
           const isInRange = !!effectiveStart && !!effectiveEnd && isDateBetween(date, effectiveStart, effectiveEnd);
+          const isMultiSelected = selectionMode === "multi" && selectedDaySet.has(date.getDate());
           const dateKey = formatDateKey(date);
           const holidayLabel = holidayLabelsByDate[dateKey];
           const context = {
@@ -218,6 +225,7 @@ export function CalendarGrid({
             isInRange,
             isToday,
             isEdge: isStart || isEnd,
+            isMultiSelected,
           });
 
           return (
@@ -241,7 +249,7 @@ export function CalendarGrid({
               className={buttonClasses}
               tabIndex={sameDay(date, focusedDate) ? 0 : -1}
               role="gridcell"
-              aria-selected={isInRange || isStart || isEnd}
+              aria-selected={selectionMode === "multi" ? isMultiSelected : isInRange || isStart || isEnd}
               aria-current={isToday ? "date" : undefined}
               title={holidayLabel ?? undefined}
               aria-label={

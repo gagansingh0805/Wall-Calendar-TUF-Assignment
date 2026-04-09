@@ -1108,7 +1108,7 @@ export function NotesPanel({
             </div>
             <button
               type="button"
-              className="calendar-reminder-add-btn"
+              className="calendar-reminder-add-btn calendar-range-save-btn"
               disabled={!canAddRecurring}
               onClick={onAddRecurringReminder}
               aria-disabled={!canAddRecurring}

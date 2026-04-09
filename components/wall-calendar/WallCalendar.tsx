@@ -122,6 +122,18 @@ function parseDateKey(value: string): Date {
   return new Date(year, (month || 1) - 1, day || 1);
 }
 
+function parseMonthDays(value: string): number[] {
+  if (!value.trim()) return [];
+  const unique = new Set<number>();
+  value
+    .split(",")
+    .map((item) => Number(item.trim()))
+    .forEach((day) => {
+      if (Number.isInteger(day) && day >= 1 && day <= 31) unique.add(day);
+    });
+  return [...unique].sort((a, b) => a - b);
+}
+
 function weekdayCode(date: Date): WeekdayCode {
   return ["SU", "MO", "TU", "WE", "TH", "FR", "SA"][date.getDay()] as WeekdayCode;
 }
@@ -309,8 +321,10 @@ export function WallCalendar() {
     count: "",
     until: "",
   });
+  const [recurringSelectedDays, setRecurringSelectedDays] = useState<number[]>([]);
   const { heroGif, isLoadingGif, isRibbonStretching, onRibbonTap, onRibbonAnimationEnd } = useHeroGifLoader();
   useTheme(theme);
+  const isRecurringMonthly = activeAction === "recurring" && reminderDraft.freq === "monthly";
 
   useEffect(() => {
     if (activeAction !== "monthMemo") return;
@@ -321,6 +335,10 @@ export function WallCalendar() {
       return { start: d, end: d };
     });
   }, [activeAction]);
+
+  useEffect(() => {
+    setRecurringSelectedDays(parseMonthDays(reminderDraft.byMonthDay));
+  }, [reminderDraft.byMonthDay]);
 
   const monthId = monthKey(viewDate);
   const rangeId = rangeKey(range.start, range.end);
@@ -684,6 +702,16 @@ export function WallCalendar() {
 
   function onSelectDate(date: Date) {
     const clicked = startOfDay(date);
+    if (isRecurringMonthly) {
+      const day = clicked.getDate();
+      setRecurringSelectedDays((prev) => {
+        const next = prev.includes(day) ? prev.filter((item) => item !== day) : [...prev, day];
+        const sorted = [...next].sort((a, b) => a - b);
+        setReminderDraft((draft) => ({ ...draft, byMonthDay: sorted.join(",") }));
+        return sorted;
+      });
+      return;
+    }
     if (activeAction === "monthMemo") {
       setRange({ start: clicked, end: clicked });
       return;
@@ -837,6 +865,27 @@ export function WallCalendar() {
       ...prev,
       [monthId]: [entry, ...(prev[monthId] ?? [])],
     }));
+    const resetDraft: RangeNoteEntry = {
+      fromDate: "",
+      toDate: "",
+      title: "",
+      description: "",
+      tag: "",
+      priority: "medium",
+    };
+    setRangeNotes((prev) => {
+      const next = { ...prev };
+      const prefix = `${monthId}_`;
+      Object.keys(next).forEach((key) => {
+        if (key.startsWith(prefix)) {
+          next[key] = { ...resetDraft };
+        }
+      });
+      next[`${monthId}_${rangeKey(range.start, range.end)}`] = { ...resetDraft };
+      next[`${monthId}_no-range`] = { ...resetDraft };
+      return next;
+    });
+    clearSelection();
   }
 
   function onDeleteSavedRangeNote(id: string) {
@@ -1048,7 +1097,8 @@ export function WallCalendar() {
             <CalendarGrid
               monthDate={viewDate}
               range={range}
-              selectionMode={activeAction === "monthMemo" ? "single" : "range"}
+              selectionMode={activeAction === "monthMemo" ? "single" : isRecurringMonthly ? "multi" : "range"}
+              selectedDayNumbers={isRecurringMonthly ? recurringSelectedDays : []}
               onSelectDate={onSelectDate}
               monthOptions={monthOptions}
               yearOptions={yearOptions}
