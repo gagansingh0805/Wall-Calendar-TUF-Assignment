@@ -101,6 +101,17 @@ function memoPriorityLabel(priority: RangeNotePriority): string {
   return "Medium";
 }
 
+function formatRecurringRuleMeta(rule: RecurringReminderRule): string {
+  const freqLabel =
+    rule.freq === "daily" ? "Daily" : rule.freq === "weekly" ? "Weekly" : "Monthly";
+  const everyLabel = `Every ${Math.max(1, rule.interval)} ${rule.freq === "daily" ? "day" : rule.freq === "weekly" ? "week" : "month"}${rule.interval > 1 ? "s" : ""}`;
+  const byWeekday = rule.byWeekday?.length ? `On ${rule.byWeekday.join(", ")}` : "";
+  const byMonthDay = rule.byMonthDay?.length ? `On day ${rule.byMonthDay.join(", ")}` : "";
+  const endsOn = rule.until ? `Ends ${formatDateKeyDisplay(rule.until)}` : "";
+  const parts = [freqLabel, everyLabel, byWeekday || byMonthDay, endsOn].filter(Boolean);
+  return parts.join(" · ");
+}
+
 function MemoItemDateMeta({ item }: { item: MemoItem }) {
   return (
     <div className="calendar-memo-item-meta items-start">
@@ -554,11 +565,6 @@ export function NotesPanel({
                       {modalSavedNote.title.trim() || "Untitled"}
                     </h4>
                     <p className="calendar-modal-dates">{formatDateKeyDisplay(modalSavedNote.fromDate)} → {formatDateKeyDisplay(modalSavedNote.toDate)}</p>
-                    {modalSavedNote.tag.trim() ? (
-                      <p className="calendar-modal-tag">
-                        <span className="calendar-modal-kicker">Tag</span> {modalSavedNote.tag}
-                      </p>
-                    ) : null}
                     <p className="calendar-modal-priority">
                       <span className={`calendar-priority-pill calendar-modal-priority-pill priority-${modalSavedNote.priority}`}>
                         {modalSavedNote.priority}
@@ -604,7 +610,15 @@ export function NotesPanel({
   return (
     <>
       {modal}
+<<<<<<< HEAD
       <aside className="calendar-panel calendar-notes-clean calendar-right-scroll flex h-full min-h-0 flex-col gap-3 overflow-y-auto rounded-2xl p-3 sm:p-4">
+=======
+      <aside
+        className={`calendar-panel calendar-notes-clean calendar-right-scroll flex h-full min-h-0 flex-col gap-3 overflow-y-auto rounded-2xl p-3 sm:p-4 ${
+          activeAction === "recurring" ? "calendar-recurring-active" : ""
+        }`}
+      >
+>>>>>>> dccd219 (FIXED SO MUCH)
       <div>
         <h3 className="calendar-muted text-[11px] font-semibold tracking-wide">Notes</h3>
         <p className="calendar-muted mt-1 text-xs">{monthLabel}</p>
@@ -622,7 +636,9 @@ export function NotesPanel({
           <button
             key={action.id}
             type="button"
-            className={`calendar-action-btn ${activeAction === action.id ? "is-active" : ""}`}
+            className={`calendar-action-btn ${activeAction === action.id ? "is-active" : ""} ${
+              activeAction === action.id && action.id === "recurring" ? "is-recurring-active" : ""
+            }`}
             onClick={() => onActionChange(action.id)}
           >
             {action.label}
@@ -631,7 +647,7 @@ export function NotesPanel({
       </div>
 
       {activeAction === "monthMemo" ? (
-        <div className="calendar-mini-sheet">
+        <div className="calendar-mini-sheet calendar-recurring-sheet">
           <div className="calendar-memo-add space-y-3">
             <label className="calendar-field-label">
               Task
@@ -1053,7 +1069,7 @@ export function NotesPanel({
                 <input
                   value={reminderDraft.byMonthDay}
                   onChange={(event) => onReminderDraftChange({ byMonthDay: event.target.value })}
-                  placeholder="12 or 12,28"
+                  placeholder="Click calendar dates or type: 12, 28"
                   className="calendar-reminder-input"
                   aria-label="Monthly days"
                 />
@@ -1119,10 +1135,19 @@ export function NotesPanel({
           {reminders.length > 0 ? (
             <ul className="mt-3 space-y-1.5">
               {reminders.map((reminder) => (
-                <li key={reminder.id} className="calendar-reminder-row">
-                  <span className="calendar-text text-xs">{reminder.text}</span>
-                  <button type="button" className="calendar-link-btn text-xs" onClick={() => onDeleteRecurringReminder(reminder.id)}>
-                    Remove
+                <li key={reminder.id} className="calendar-recurring-card">
+                  <div className="calendar-recurring-card-stack">
+                    <p className="calendar-recurring-card-title">{reminder.text}</p>
+                    <p className="calendar-recurring-card-meta">{formatRecurringRuleMeta(reminder)}</p>
+                  </div>
+                  <button
+                    type="button"
+                    className="calendar-memo-delete-btn"
+                    onClick={() => onDeleteRecurringReminder(reminder.id)}
+                    aria-label={`Remove recurring reminder: ${reminder.text}`}
+                    title="Remove"
+                  >
+                    <MemoIconClose />
                   </button>
                 </li>
               ))}
@@ -1131,8 +1156,11 @@ export function NotesPanel({
           {reminderInstances.length > 0 ? (
             <ul className="mt-3 space-y-1.5">
               {reminderInstances.slice(0, 6).map((item) => (
-                <li key={`${item.id}-${item.date.toISOString()}`} className="calendar-reminder-instance">
-                  {new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(item.date)} - {item.text}
+                <li key={`${item.id}-${item.date.toISOString()}`} className="calendar-recurring-instance-card">
+                  <span className="calendar-recurring-instance-date">
+                    {new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(item.date)}
+                  </span>
+                  <span className="calendar-recurring-instance-text">{item.text}</span>
                 </li>
               ))}
             </ul>
@@ -1171,6 +1199,7 @@ export function NotesPanel({
               <span className="calendar-holidays-year-summary-label">Holidays this month</span>
               {filteredMonthHolidays.length > 0 ? <span className="calendar-holidays-count">{filteredMonthHolidays.length}</span> : null}
             </button>
+<<<<<<< HEAD
             {activeHolidaySection === "month" ? (
               filteredMonthHolidays.length === 0 ? (
                 <p className="calendar-holidays-empty">
@@ -1198,6 +1227,33 @@ export function NotesPanel({
                   ))}
                 </ul>
               )
+=======
+            {activeHolidaySection === "month" ? filteredMonthHolidays.length === 0 ? (
+              <p className="calendar-holidays-empty">
+                {holidays.length === 0
+                  ? "No public or observance holidays listed for this month."
+                  : "No festivals match your search."}
+              </p>
+            ) : (
+              <ul className="calendar-holidays-list calendar-holidays-list-scroll" role="list">
+                {filteredMonthHolidays.map((holiday) => (
+                  <li key={`${holiday.label}-${holiday.date.toISOString()}`} className={`calendar-holiday-row ${holiday.tier}`}>
+                    <time className="calendar-holiday-date-badge" dateTime={holiday.date.toISOString().slice(0, 10)}>
+                      <span className="calendar-holiday-date-day">{holiday.date.getDate()}</span>
+                      <span className="calendar-holiday-date-mon">
+                        {new Intl.DateTimeFormat("en-US", { month: "short" }).format(holiday.date)}
+                      </span>
+                    </time>
+                    <div className="calendar-holiday-body">
+                      <span className="calendar-holiday-name">{holiday.label}</span>
+                      <span className={`calendar-holiday-tier ${holiday.tier}`}>
+                        {holiday.tier === "major" ? "Major" : "Observance"}
+                      </span>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+>>>>>>> dccd219 (FIXED SO MUCH)
             ) : null}
           </div>
           <div
@@ -1216,6 +1272,7 @@ export function NotesPanel({
                 <span className="calendar-holidays-count calendar-holidays-count-muted">{filteredYearHolidays.length}</span>
               ) : null}
             </button>
+<<<<<<< HEAD
             {activeHolidaySection === "year" ? (
               filteredYearHolidays.length === 0 ? (
                 <p className="calendar-holidays-empty">
@@ -1241,6 +1298,31 @@ export function NotesPanel({
                   ))}
                 </ul>
               )
+=======
+            {activeHolidaySection === "year" ? filteredYearHolidays.length === 0 ? (
+              <p className="calendar-holidays-empty">
+                {currentYearHolidays.length === 0 ? "No holidays loaded for this year yet." : "No festivals match your search."}
+              </p>
+            ) : (
+              <ul className="calendar-holidays-list calendar-holidays-list-scroll" role="list">
+                {filteredYearHolidays.map((holiday) => (
+                  <li key={`${holiday.label}-${holiday.date.toISOString()}`} className={`calendar-holiday-row ${holiday.tier}`}>
+                    <time className="calendar-holiday-date-badge" dateTime={holiday.date.toISOString().slice(0, 10)}>
+                      <span className="calendar-holiday-date-day">{holiday.date.getDate()}</span>
+                      <span className="calendar-holiday-date-mon">
+                        {new Intl.DateTimeFormat("en-US", { month: "short" }).format(holiday.date)}
+                      </span>
+                    </time>
+                    <div className="calendar-holiday-body">
+                      <span className="calendar-holiday-name">{holiday.label}</span>
+                      <span className={`calendar-holiday-tier ${holiday.tier}`}>
+                        {holiday.tier === "major" ? "Major" : "Observance"}
+                      </span>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+>>>>>>> dccd219 (FIXED SO MUCH)
             ) : null}
           </div>
         </div>

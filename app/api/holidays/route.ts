@@ -6,6 +6,7 @@ type HolidayItem = {
   name: string;
 };
 
+<<<<<<< HEAD
 const FESTIVAL_ALIAS_RULES: Array<{ canonical: string; aliases: RegExp[] }> = [
   {
     canonical: "Holi",
@@ -36,6 +37,27 @@ function canonicalizeFestivalName(name: string): string {
   return name;
 }
 
+=======
+type FestivalAliasRule = {
+  canonicalName: string;
+  canonicalMatcher: RegExp;
+  sourceMatchers: RegExp[];
+};
+
+const FESTIVAL_ALIAS_RULES: FestivalAliasRule[] = [
+  {
+    canonicalName: "Holi",
+    canonicalMatcher: /\bholi\b/i,
+    sourceMatchers: [/\bholi\b/i, /\bdhuleti\b/i, /\bdhulandi\b/i, /\bdol\s+jatra\b/i, /\bdhulendi\b/i],
+  },
+  {
+    canonicalName: "Diwali",
+    canonicalMatcher: /\bdiwali\b/i,
+    sourceMatchers: [/\bdiwali\b/i, /\bdeepavali\b/i, /\bdivali\b/i],
+  },
+];
+
+>>>>>>> dccd219 (FIXED SO MUCH)
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -66,6 +88,7 @@ export async function GET(request: Request) {
       collect((stateHoliday.getHolidays(year) ?? []).map((h) => ({ date: h.date, name: h.name })));
     });
 
+<<<<<<< HEAD
     const hasHoli = all.some((holiday) => holiday.name.toLowerCase() === "holi");
     const hasDiwali = all.some((holiday) => holiday.name.toLowerCase() === "diwali");
     const manual = MANUAL_FESTIVAL_DATES[year];
@@ -75,6 +98,15 @@ export async function GET(request: Request) {
       if (!hasDiwali) fallbackEntries.push({ date: `${manual.diwali}T12:00:00+05:30`, name: "Diwali" });
       if (fallbackEntries.length > 0) collect(fallbackEntries);
     }
+=======
+    FESTIVAL_ALIAS_RULES.forEach((rule) => {
+      const hasCanonical = all.some((holiday) => rule.canonicalMatcher.test(holiday.name));
+      if (hasCanonical) return;
+      const source = all.find((holiday) => rule.sourceMatchers.some((matcher) => matcher.test(holiday.name)));
+      if (!source) return;
+      collect([{ date: source.date, name: rule.canonicalName }]);
+    });
+>>>>>>> dccd219 (FIXED SO MUCH)
 
     const filtered = all
       .filter((holiday) => {

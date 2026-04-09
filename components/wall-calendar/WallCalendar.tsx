@@ -162,6 +162,19 @@ function occursOnDate(rule: RecurringReminderRule, date: Date): boolean {
   return true;
 }
 
+function parseMonthDays(value: string): number[] {
+  const daySet = new Set<number>();
+  value
+    .split(",")
+    .map((item) => Number(item.trim()))
+    .forEach((day) => {
+      if (Number.isFinite(day) && day >= 1 && day <= 31) {
+        daySet.add(day);
+      }
+    });
+  return [...daySet].sort((a, b) => a - b);
+}
+
 function useTheme(theme: ThemeName) {
   useEffect(() => {
     document.body.setAttribute("data-calendar-theme", theme);
@@ -261,7 +274,11 @@ function classifyHolidayTier(name: string): HolidayTier {
   const normalized = name.toLowerCase();
   const majorMatchers = [
     "diwali",
+    "deepavali",
+    "divali",
     "holi",
+    "dhuleti",
+    "dhulandi",
     "dussehra",
     "durga puja",
     "eid",
@@ -309,6 +326,7 @@ export function WallCalendar() {
     count: "",
     until: "",
   });
+  const [recurringSelectedDays, setRecurringSelectedDays] = useState<number[]>([]);
   const { heroGif, isLoadingGif, isRibbonStretching, onRibbonTap, onRibbonAnimationEnd } = useHeroGifLoader();
   useTheme(theme);
 
@@ -321,6 +339,16 @@ export function WallCalendar() {
       return { start: d, end: d };
     });
   }, [activeAction]);
+
+  useEffect(() => {
+    setRecurringSelectedDays(parseMonthDays(reminderDraft.byMonthDay));
+  }, [reminderDraft.byMonthDay]);
+
+  useEffect(() => {
+    if (reminderDraft.freq === "monthly") return;
+    if (!reminderDraft.byMonthDay.trim()) return;
+    setReminderDraft((prev) => ({ ...prev, byMonthDay: "" }));
+  }, [reminderDraft.byMonthDay, reminderDraft.freq]);
 
   const monthId = monthKey(viewDate);
   const rangeId = rangeKey(range.start, range.end);
@@ -688,6 +716,18 @@ export function WallCalendar() {
       setRange({ start: clicked, end: clicked });
       return;
     }
+    if (activeAction === "recurring") {
+      if (reminderDraft.freq !== "monthly") return;
+      if (clicked.getMonth() !== viewDate.getMonth() || clicked.getFullYear() !== viewDate.getFullYear()) return;
+      const day = clicked.getDate();
+      setRecurringSelectedDays((prev) => {
+        const next = prev.includes(day) ? prev.filter((item) => item !== day) : [...prev, day];
+        const normalized = [...new Set(next)].sort((a, b) => a - b);
+        setReminderDraft((draftPrev) => ({ ...draftPrev, byMonthDay: normalized.join(", ") }));
+        return normalized;
+      });
+      return;
+    }
 
     if (!range.start) {
       setRange({ start: date, end: null });
@@ -759,7 +799,13 @@ export function WallCalendar() {
   }
 
   function onReminderDraftChange(patch: Partial<ReminderDraft>) {
-    setReminderDraft((prev) => ({ ...prev, ...patch }));
+    setReminderDraft((prev) => {
+      const next = { ...prev, ...patch };
+      if (typeof patch.byMonthDay === "string") {
+        next.byMonthDay = parseMonthDays(patch.byMonthDay).join(", ");
+      }
+      return next;
+    });
   }
 
   function onAddRecurringReminder() {
@@ -1011,7 +1057,11 @@ export function WallCalendar() {
                     aria-label="Select a date range preset"
                   >
                     <option value="" disabled>
+<<<<<<< HEAD
                       No range selected
+=======
+                      Range preset
+>>>>>>> dccd219 (FIXED SO MUCH)
                     </option>
                     <option value="weekend">This Weekend</option>
                     <option value="next7">Next 7 Days</option>
@@ -1048,7 +1098,8 @@ export function WallCalendar() {
             <CalendarGrid
               monthDate={viewDate}
               range={range}
-              selectionMode={activeAction === "monthMemo" ? "single" : "range"}
+              selectionMode={activeAction === "monthMemo" ? "single" : activeAction === "recurring" ? "multi" : "range"}
+              selectedDayNumbers={activeAction === "recurring" && reminderDraft.freq === "monthly" ? recurringSelectedDays : []}
               onSelectDate={onSelectDate}
               monthOptions={monthOptions}
               yearOptions={yearOptions}
